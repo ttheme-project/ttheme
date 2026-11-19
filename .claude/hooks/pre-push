@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+zsh tests/checked.zsh fresh && exit 0
+mapfile -t lane < tests/lane
+git diff --quiet --no-renames origin/main HEAD -- "${lane[@]}" && exit 0
+mise run ci

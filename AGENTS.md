@@ -10,15 +10,15 @@ Rules every coding agent needs in this repository: the gate, the hard rules, the
 
 Every dev command is a `mise` task (`mise tasks`); `package.json` has no scripts and takes none. The toolchain is bun 1.4 and node 22, the oldest `engines` allows. The checks need zsh, tmux and sqlite3 on `PATH`.
 
-Run `mise run format`, then `mise run ci`, once, right before a change leaves your hands: a pull request, a merge, a push to `main` or `mise run release`. `ci` is exactly what CI runs and takes a minute or two, and `format` first fixes most of what lint would fail on. A push to `main` is itself a deploy (the site on Vercel, Pages).
+`.claude/hooks/pre-push` runs `mise run ci` on `git push`, unless it already passed on `HEAD`'s tree or the push changes only what `tests/lane` leaves out. `ci` is exactly what CI runs, and `mise run format` fixes most of what its lint fails on. A push to `main` is itself a deploy (the site on Vercel, Pages).
 
 The pre-push hook (`.githooks/pre-push`, on once `git config core.hooksPath .githooks` runs, as every Claude Code session does on start) lets a push to `main` through only on a tree `ci` passed, or on a change to `site/`, `docs/`, Markdown and the instruction files alone (`tests/lane`) once `mise run ci:site` passes; the ci workflow runs only `ci:site` for such a push too. Never push with `--no-verify`.
 
-While a change goes back and forth with the person you work for, run no check unless a round asks to see something, and say the round is unchecked. A report on a terminal-side change says real terminals are unchecked until the `sandbox` skill has run. The `PostToolUse` hooks in `.claude/settings.json` fix a file an edit tool touched (oxlint, biome) and measure the instruction files against their budgets; an edit made through Bash never reaches them.
+While a change goes back and forth with the person you work for, run no check unless a round asks to see something. A report on a terminal-side change says real terminals are unchecked until the `sandbox` skill has run. The `PostToolUse` hooks in `.claude/settings.json` fix a file an edit tool touched (oxlint, biome) and measure the instruction files against their budgets; an edit made through Bash never reaches them.
 
 | Task | Use it when |
 |---|---|
-| `mise run ci` | the gate |
+| `mise run ci` | the gate, from `.claude/hooks/pre-push` |
 | `mise run test`, `check`, `lint` | unit tests with the contrast gate, typecheck, biome, then anti-slop |
 | `mise run build` | regenerate `dist/`; fails on a contrast violation |
 | `mise run look <scenario> <cols>x<rows>` | see a TUI screen without a window; compare a change with `--against HEAD`, never by putting a file back from git |

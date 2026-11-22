@@ -96,7 +96,6 @@ the terminal watches. More fails as a regression; fewer fails until
 export TTHEME_TRACE=~/trace.tsv     # in a shell whose layer has the marks; unset it to stop
 mise run trace ~/trace.tsv          # each interaction's stages, the slowest, a Perfetto file
 mise run trace --watch ~/trace.tsv  # record the front window while you work; ctrl+c reads both
-mise run trace --sandbox --runs 20 -- ttheme wait:Preview 1 text:kita-ikuyo 1 tab f 'wait:PICTURE SEARCH' 3 esc 2
 ```
 
 While `TTHEME_TRACE` names a file, the shell layer and every CLI it starts

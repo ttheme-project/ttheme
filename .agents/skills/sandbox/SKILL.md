@@ -44,7 +44,6 @@ H=.agents/skills/sandbox/scripts/hand.zsh
 zsh $H ttheme wait:Preview
 zsh $H ttheme wait:Preview shift-tab wait:Browse
 zsh $H --size 100x30 ttheme wait:Preview alt-c
-zsh $H ttheme wait:Preview text:kita-ikuyo 0.5 tab f 'wait:try on' enter 'wait:PICTURE PREVIEW'
 ```
 
 A step is what `sb_drive` takes (`references/ghostty.md`). Ghostty makes its first window only once it is activated, so focus leaves for a moment and comes back. The window takes the person's keys once they click it and the steps are done, and a new tab in it is an ordinary one. The list may open on a palette or on a shelf, where `tab` goes to Browse and `→` opens the shelf: type a palette's name first to land on its row.

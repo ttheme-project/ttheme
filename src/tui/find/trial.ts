@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync, readSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { Tone } from '../../core/backdrop-tone.ts'
 import { fileOf, postKey, type Rendition, rendition, type Site } from '../../core/booru.ts'
 import type { PaletteEntry } from '../../core/manifest.ts'
+import { pngHead } from '../../core/png.ts'
 import { resized, TUNE, TUNE_SIZE_LEAST } from '../../core/picture-panel.ts'
 import { fillSize, rescaled } from '../../pictures/backdrop.ts'
 import { canRemoveBackground, keepable, removeBackground } from '../../pictures/cutout.ts'
@@ -25,6 +26,30 @@ const PRELOAD = 2
 const TRY_WIDTH = 1280
 
 const TUNED_HELD = 16
+
+const HEAD_READ = 65_536
+
+function opaqueFile(path: string, ext: string): boolean {
+  if (ext === 'jpg') {
+    return true
+  }
+
+  const head = new Uint8Array(HEAD_READ)
+  let fd: number | undefined
+
+  try {
+    fd = openSync(path, 'r')
+    const read = readSync(fd, head, 0, head.length, 0)
+
+    return pngHead(head.subarray(0, read))?.alpha === false
+  } catch {
+    return false
+  } finally {
+    if (fd !== undefined) {
+      closeSync(fd)
+    }
+  }
+}
 
 const STEPS = new Map([
   ['left', -1],
@@ -171,6 +196,8 @@ export class Trial {
     if (this.view.mode.on === 'grid') {
       this.view.mode = { on: 'try' }
     }
+
+    this.select(0)
   }
 
   leave(): void {
@@ -482,7 +509,7 @@ export class Trial {
     }
   }
 
-  select(): void {
+  select(wait = SETTLE): void {
     const view = this.view
     const tile = view.tiles[view.focus]
     this.cancel()
@@ -504,7 +531,7 @@ export class Trial {
       return
     }
 
-    this.begin(tile, SETTLE)
+    this.begin(tile, wait)
     this.paint.draw()
   }
 
@@ -624,9 +651,19 @@ export class Trial {
       failed: false,
     }
 
+    const cuts = canRemoveBackground() && this.settings.setting('TTHEME_FIND_REMOVE_BG') !== 'off'
+    const early = new AbortController()
+    const cutting =
+      cuts && opaqueFile(path, version.ext)
+        ? this.cutOut(site, tile.id, path, AbortSignal.any([signal, early.signal]))
+        : undefined
+
     this.doing(job, { step: 'prepare', key: tile.key })
     this.paint.flush()
-    const plain = await this.render(current, 'plain')
+    const plain = await this.render(current, 'plain').catch((error: unknown) => {
+      early.abort()
+      throw error
+    })
 
     if (this.job !== job) {
       return undefined
@@ -634,14 +671,18 @@ export class Trial {
 
     const twin = plain.clear === 0 ? await this.twinOf(pick, path, job) : undefined
 
+    if (twin || this.job !== job || plain.clear > 0) {
+      early.abort()
+    }
+
     if (twin || this.job !== job) {
       return twin
     }
 
-    if (plain.clear === 0 && canRemoveBackground() && this.settings.setting('TTHEME_FIND_REMOVE_BG') !== 'off') {
+    if (plain.clear === 0 && cuts) {
       this.doing(job, { step: 'cut', key: tile.key })
       this.paint.flush()
-      current.cut = await this.cutOut(site, tile.id, path, signal)
+      current.cut = await (cutting ?? this.cutOut(site, tile.id, path, signal))
 
       if (this.job !== job) {
         return undefined

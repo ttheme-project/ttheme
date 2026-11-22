@@ -321,9 +321,8 @@ export class Boards {
     board.checked = 1
     board.total = 1
     this.thumbs.want(pick)
-    this.enter()
     this.show()
-    this.select()
+    this.enter()
     this.paint.draw()
   }
 

@@ -898,9 +898,8 @@ export class Finder {
     }
 
     if (key === 'enter' && view.tiles[view.focus]) {
-      this.trial.enter()
       view.notice = undefined
-      this.trial.select()
+      this.trial.enter()
 
       return
     }

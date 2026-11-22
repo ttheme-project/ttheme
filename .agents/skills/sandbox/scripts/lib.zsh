@@ -53,7 +53,7 @@ settled() {
 
 await_run() {
   local pid=$1 dir=$2 i
-  for i in {1..1500}; do
+  for i in {1..$(( ${SB_AWAIT:-150} * 10 ))}; do
     serve $pid $dir
     settled && return 0
     sleep 0.1

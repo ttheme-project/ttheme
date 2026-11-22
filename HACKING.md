@@ -90,6 +90,55 @@ is not among them), the files it writes and the entries it makes in the folders
 the terminal watches. More fails as a regression; fewer fails until
 `mise run costs --update` locks it in.
 
+## Where a key's time goes
+
+```sh
+export TTHEME_TRACE=~/trace.tsv     # in a shell whose layer has the marks; unset it to stop
+mise run trace ~/trace.tsv          # each interaction's stages, the slowest, a Perfetto file
+mise run trace --watch ~/trace.tsv  # record the front window while you work; ctrl+c reads both
+mise run trace --sandbox --runs 20 -- ttheme wait:Preview 1 text:kita-ikuyo 1 tab f 'wait:PICTURE SEARCH' 3 esc 2
+```
+
+While `TTHEME_TRACE` names a file, the shell layer and every CLI it starts
+append a line per mark to it: the wall-clock time in seconds, the pid, `zsh`,
+`node` or `keys`, the mark and a detail. The marks are the edges a key passes:
+`input.bytes` when its bytes arrive and `input.key` once they read as a key,
+`frame.write` for a frame sent (`frame.tick` for a spinner's or a hint's),
+`osc.write` and `reload` for colors, `cli.start` and `cli.end` around a CLI run
+and `proc.start`, `proc.main` and `proc.exit` inside it, `net.*` and `render.*`
+for what it waits on, and `focus.in`, `verb.*`, `prompt` and `shell.*` in the
+shell. Unset, a mark costs the shell one variable test and the CLI a call that
+returns at once; the CLI keeps its marks in memory and appends them as it exits.
+
+`mise run trace` cuts the file at each key and names every stretch between two
+marks in a row, as Chromium's `EventLatency` names its stages: A from the key
+event to the bytes, only where `keys` sent it; B inside ttheme; C a process
+starting or ending; D from a frame written to the screen changing. A key's work
+ends at its last write, unless 250 ms pass with no mark at all before the next
+one: a write after that gap is counted as later, not as the key's. Without a
+capture the stages end at that write. With one they end on the screen: the
+first change and the moment it settled, the frames in between that match
+neither the screen before nor after and how many of them were blank (at most
+half the contrast of the duller of those two). Ghostty and iTerm2 send the
+capture a frame every refresh, so a run whose settling frame came after a
+skipped one is left out of D and the totals; Warp and Terminal.app send one
+only when the window changed, and there the report says a skip cannot be told
+from a still screen. The slowest interaction goes to a Chrome JSON file for
+ui.perfetto.dev; `--perfetto all` writes every one.
+
+`--sandbox` opens the sandbox's Ghostty (`--iterm`, `--alacritty` and
+`--wezterm` theirs) behind your windows, plays `sb_drive`'s steps N times and
+sends the keys as key events to that instance alone, so they go through the
+terminal's own keyboard encoding; mouse, paste and focus steps still go into
+the pty. kitty drops key events sent to a window behind others and draws
+nothing there, so `--kitty` puts every key into the pty and records no screen:
+its stages end at the last write. `--warp` and `--terminal-app` drive your own
+apps, so there too every key goes into the pty and A is not measured. The
+report warns when keys it sent never arrived. The first key a new instance gets takes far longer than the rest, so
+`keys` sends it a space the shell drops before the first run. Sending keys
+needs Accessibility and recording a window needs Screen Recording, both for the
+terminal that runs `mise run trace`.
+
 ## Working on the TUIs
 
 The screens `tests/tui.zsh`'s scenarios reach — Browse, the hub and preview, the

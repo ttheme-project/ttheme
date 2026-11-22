@@ -31,6 +31,7 @@ Check in this order, each step only as wide as the change:
 | anything iTerm2 | iTerm2 | `references/iterm2.md` |
 | Konsole, or any terminal on Linux | Linux | `references/linux.md` |
 | Terminal.app, kitty, Alacritty, WezTerm, Warp | `window.zsh --<terminal>` | `references/window-zsh.md`, and `references/warp.md` for Warp |
+| where a key's time goes, stage by stage, over N runs | `mise run trace --sandbox` | `HACKING.md` ("Where a key's time goes") |
 
 Read `references/ghostty.md` before any window run: its commands and report are every window mode's. A flow that needs keys and a reload count is two runs: the keys in shell mode, then the same functions in Ghostty mode.
 

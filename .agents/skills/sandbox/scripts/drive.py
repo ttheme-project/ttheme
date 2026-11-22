@@ -40,8 +40,19 @@ KEYS = {
 
 GAP = 0.25
 REPEAT = 0.03
-LINGER = 10.0
+POSTED = set(KEYS) - {'focus-in', 'focus-out'}
+LINGER = float(os.environ.get('SB_LINGER') or 10)
 WAIT = 10.0
+
+
+def real(step):
+    if not os.environ.get('SB_KEYS'):
+        return None
+    if step in POSTED or (len(step) == 1 and step.isascii()):
+        return 0.0
+    if step.startswith('text:'):
+        return 0.03 * (len(step) - 5)
+    return None
 
 
 def keys(step):
@@ -160,6 +171,7 @@ def main():
         done = None
         waiting = None
         poll = 0.0
+        poster = None
         while True:
             now = time.monotonic()
             if shot:
@@ -205,7 +217,14 @@ def main():
                     try:
                         at = now + float(step)
                     except ValueError:
-                        pending, gap = keys(step)
+                        typing = real(step)
+                        if typing is None:
+                            pending, gap = keys(step)
+                        else:
+                            if poster is None:
+                                poster = open(os.environ['SB_KEYS'], 'w', buffering=1)
+                            poster.write(step + '\n')
+                            at = now + typing + GAP
             elif not steps and not pending and not shot and not waiting and done is None:
                 done = now
                 if hand:

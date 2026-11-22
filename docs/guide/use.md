@@ -240,9 +240,9 @@ In `ttheme`, the panel beside the list belongs to the palette under the cursor, 
   to cutouts, `/` edits the search (or takes a post's link or number) and `s`
   opens the filters. It lists only posts rated safe by default, and shows each
   post's number and artist. It is not offered in Terminal.app or inside tmux.
-  danbooru answers only requests that carry your danbooru user number: the
-  first time its tab is refused, a dialog links your profile and takes the
-  number or the profile's address, typed or pasted. zerochan asks for your
+  danbooru needs your danbooru user number. Until find has it, danbooru's tab
+  carries a `!`, and opening it asks for the number or your profile's address.
+  zerochan asks for your
   username. **Danbooru id** and **Zerochan name** in the filters (`a`) hold
   both, and each site is sent only its own.
 - `enter` on a thumbnail shows the window the way the picture will look. `x`

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { type Profile, pagesOf } from '../../core/artists.ts'
 import type { Coloring } from '../../core/backdrop-tone.ts'
-import { BLOCKS, type Block, KEY_SPAN, type Kind, type Narrow, type Rating, SITES } from '../../core/booru.ts'
+import { BLOCKS, type Block, KEY_SPAN, type Kind, type Narrow, type Rating, SITES, unsigned } from '../../core/booru.ts'
 import { type Hex, mix } from '../../core/color.ts'
 import { unqualified } from '../../core/names.ts'
 import {
@@ -1260,12 +1260,20 @@ function mention(text: string, key: number, sgr: string): Part[] {
 }
 
 function tabs(line: Line, cols: number, view: Seen): void {
-  const strip = [{ name: 'all', moved: false }, ...SITES].flatMap((site, i): Part[] => {
-    const label = `${site.name}${site.moved ? '*' : ''}`
-    const [text, sgr] = site.name === view.site ? badge(view, label) : [` ${label} `, D]
-    const tab: Part = [text, sgr, undefined, { kind: 'site', tab: i }]
+  const strip = [undefined, ...SITES].flatMap((site, i): Part[] => {
+    const name = site?.name ?? 'all'
+    const label = `${name}${site?.moved ? '*' : ''}`
+    const needed = site !== undefined && unsigned(site)
+    const current = name === view.site
+    const [text, sgr] = current ? badge(view, needed ? `${label} ${MARKS.needed}` : label) : [` ${label} `, D]
+    const spot = { kind: 'site', tab: i } as const
 
-    return i ? [[' ', ''], tab] : [tab]
+    const tab: Part[] = [
+      [text, sgr, undefined, spot],
+      ...(needed && !current ? [[`${MARKS.needed} `, WARN, undefined, spot] satisfies Part] : []),
+    ]
+
+    return i ? [[' ', ''], ...tab] : tab
   })
 
   const fits = partsWidth(strip) <= cols

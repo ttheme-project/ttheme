@@ -12,6 +12,7 @@ import {
   SITES,
   type Site,
   tagsOf,
+  unsigned,
   wantedAccount,
 } from '../../core/booru.ts'
 import type { PaletteEntry } from '../../core/manifest.ts'
@@ -72,6 +73,10 @@ interface Board {
 interface Vetting {
   pick: Pick
   passed: Promise<boolean>
+}
+
+function asking(site: Site): string | undefined {
+  return site.account ? `${site.name} wants ${site.account.wants} — a sets it` : undefined
 }
 
 function blank(key: string, state: Board['state']): Board {
@@ -369,6 +374,7 @@ export class Boards {
     this.tell(known.error ? { text: known.error, tone: 'error' } : undefined)
     this.show()
     this.paint.draw()
+    this.prompt(known)
     await this.pump()
   }
 
@@ -405,15 +411,19 @@ export class Boards {
     this.boards.set(board.key, board)
     this.tell()
 
-    const plans = this.sites().flatMap((site) => {
+    const shut = this.sites().filter(unsigned)
+    const asked = this.sites().filter((site) => !unsigned(site))
+
+    const plans = asked.flatMap((site) => {
       const query = this.tags.query(site)
 
       return query ? [{ site, ...query }] : []
     })
 
-    const missing = this.sites().filter((site) => !plans.some((plan) => plan.site === site))
+    const missing = asked.filter((site) => !plans.some((plan) => plan.site === site))
 
     const notes = [
+      ...shut.flatMap((site) => asking(site) ?? []),
       ...plans.flatMap(({ notes }) => notes),
       ...(missing.length > 0
         ? [`${this.entry.name} has no tag on ${missing.map((site) => site.name).join(', ')}`]
@@ -421,13 +431,20 @@ export class Boards {
     ]
 
     board.note = notes.length > 0 ? notes.join('  ') : undefined
+    board.wants = shut[0]?.account?.setting
 
     if (plans.length === 0) {
       board.state = 'resting'
     }
 
+    if (plans.length === 0 && shut.length > 0) {
+      board.error = board.note
+      this.tell({ text: board.note ?? '', tone: 'error' })
+    }
+
     this.show()
     this.paint.draw()
+    this.prompt(board)
     void this.tally(board, plans)
 
     try {
@@ -471,7 +488,13 @@ export class Boards {
     const account = wantedAccount(error)
     const site = account ? SITES.find((one) => one.account?.setting === account) : undefined
 
-    return site?.account ? `${site.name} wants ${site.account.wants} — a sets it` : reason(name, error)
+    return (site && asking(site)) ?? reason(name, error)
+  }
+
+  private prompt(board: Board): void {
+    if (board === this.board && board.wants && this.site()?.account?.setting === board.wants) {
+      this.asks(board.wants)
+    }
   }
 
   private want(board: Board, error: Error | string): void {
@@ -482,10 +505,7 @@ export class Boards {
     }
 
     board.wants = account
-
-    if (board === this.board && this.site()?.account?.setting === account) {
-      this.asks(account)
-    }
+    this.prompt(board)
   }
 
   private fail(board: Board, error: Error | string, site = this.site()): void {

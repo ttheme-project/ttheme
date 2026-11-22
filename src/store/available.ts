@@ -419,6 +419,10 @@ export async function reach(
     throw new Missing(`nothing at ${url}`)
   }
 
+  if (response.headers.get('cf-mitigated') === 'challenge') {
+    throw new Limited(`${new URL(url).host} is behind a Cloudflare challenge (${response.status})`)
+  }
+
   if (response.status === 403 || response.status === 429) {
     throw new Limited(
       `${new URL(url).host} is turning requests away for now (${response.status}) — try again in a minute`,

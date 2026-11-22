@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { arch, platform, release } from 'node:os'
 import pkg from '../../package.json' with { type: 'json' }
+import { SITES, unsigned } from '../core/booru.ts'
 import { readInstalled } from '../store/installed.ts'
 import { configHome } from '../store/paths.ts'
 import { SETTING_NAMES, settingDefault, settingPrivate } from '../store/wiring.ts'
@@ -119,6 +120,14 @@ function wiredLine(home: string): string {
   }
 }
 
+function neededLine(): string | undefined {
+  const missing = SITES.flatMap((site) =>
+    site.account && unsigned(site) ? [`${site.account.setting} (${site.name})`] : [],
+  )
+
+  return missing.length > 0 ? missing.join('  ') : undefined
+}
+
 function settingsLine(env: Env): string | undefined {
   const changed = SETTING_NAMES.flatMap((name) => {
     const value = env[name]
@@ -143,6 +152,7 @@ export function runInfo(): void {
     ['Terminal', describeTerminal(env)],
     ['Wired', wiredLine(configHome())],
     ['Settings', settingsLine(env)],
+    ['Missing', neededLine()],
   ]
 
   const shown = rows.filter((row): row is [string, string] => row[1] !== undefined)

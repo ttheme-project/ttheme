@@ -23,7 +23,7 @@ Name a palette the character's full name, its danbooru tag without a qualifier a
 
 ## 2. Research
 
-Search the web for the character's appearance — hair, eyes, signature item, costume. Find the character's danbooru tag (`https://danbooru.donmai.us/wiki_pages/<tag>`) and check it with `ttheme palette consensus <tag> --json`: `posts` 0 means danbooru has no such tag, and `current`, when present, is the name to use. Keep the result for step 5. When `consensus` keeps failing with exit 4 because danbooru turns requests away, go on with the tag you found by hand and read the identity as step 5's last line says, saying so in the report.
+Search the web for the character's appearance — hair, eyes, signature item, costume. Find the character's danbooru tag (`https://danbooru.donmai.us/wiki_pages/<tag>`) and check it with `ttheme palette consensus <tag> --json`: `posts` 0 means danbooru has no such tag, and `current`, when present, is the name to use. Keep the result for step 5. When it fails with exit 3 naming `TTHEME_FIND_DANBOORU_USER`, stop and ask the user to set their danbooru user number. When `consensus` keeps failing with exit 4 because danbooru turns requests away, go on with the tag you found by hand and read the identity as step 5's last line says, saying so in the report.
 
 ## 3. Find a picture and ask the user
 

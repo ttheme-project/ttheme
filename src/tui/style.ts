@@ -51,6 +51,7 @@ export const MARKS = {
   spot: '.',
   none: '–',
   cut: '…',
+  needed: '!',
 } as const
 
 export const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']

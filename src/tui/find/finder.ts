@@ -96,7 +96,6 @@ export class Finder {
   private noticeTimer?: NodeJS.Timeout
   private peekTimer?: NodeJS.Timeout
   private readonly slowed = new Set<string>()
-  private readonly declined = new Set<string>()
   private done?: (code: number) => void
   private readonly scratch = mkdtempSync(join(tmpdir(), 'ttheme-find-'))
 
@@ -969,7 +968,7 @@ export class Finder {
     const site = SITES.find((one) => one.account?.setting === setting)
     const account = site?.account
 
-    if (!site || !account || this.declined.has(site.key) || layerOf(this.view).on !== 'grid') {
+    if (!site || !account || layerOf(this.view).on !== 'grid') {
       return
     }
 
@@ -1004,12 +1003,6 @@ export class Finder {
 
   private accountKey(ask: AccountAsk, key: string): void {
     if (key === 'esc') {
-      const site = siteOf(ask)
-
-      if (site) {
-        this.declined.add(site.key)
-      }
-
       this.view.account = undefined
       this.paint.draw()
 

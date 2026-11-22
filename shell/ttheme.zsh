@@ -31,6 +31,7 @@ typeset -gA TTHEME_MARKS=(
   update ⇡ auto ↻ remove × undo ↶
   star ★ link ⧉ search ⌕ linked ⇠
   contrast ◐ swatch ■ pictures ▣ queued ◌ spot . none – cut …
+  needed !
 )
 
 typeset -gA TTHEME_KEYCAPS=(

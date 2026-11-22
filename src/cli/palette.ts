@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { type Anchors, type Problem, readAnchors } from '../core/anchors.ts'
 import { bestBase, parseScheme, type Ranked, ROLE_BASE, roleBase } from '../core/base.ts'
-import { agentFor, LENDER, MAX_PIXELS } from '../core/booru.ts'
+import { agentFor, LENDER, MAX_PIXELS, unsigned } from '../core/booru.ts'
 import type { Hex } from '../core/color.ts'
 import {
   aboutOf,
@@ -298,6 +298,14 @@ function verdictText(verdict: Verdict): string {
 async function consensus(tag: string | undefined, flags: PaletteFlags): Promise<number> {
   if (tag === undefined || !/^\S+$/.test(tag)) {
     throw new InputError('name a danbooru tag', [{ path: 'tag', problem: 'a danbooru tag, such as gotoh_hitori' }])
+  }
+
+  if (unsigned(LENDER) && LENDER.account) {
+    const { account } = LENDER
+
+    throw new InputError(`danbooru wants your user id — set ${account.setting} in \`ttheme config\``, [
+      { path: account.setting, problem: `the number on ${account.profile(LENDER.origin)}` },
+    ])
   }
 
   const query = new URLSearchParams({ query: `${tag} solo`, category: 'general', limit: '150' })

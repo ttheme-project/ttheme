@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Without your danbooru user number, find's danbooru tab carries a `!` and asks for it each time you open the tab. `ttheme palette consensus` and `ttheme info` name the missing setting instead of saying to try again in a minute.
+
 ## 1.2.116
 
 - ttheme's repository moved to [github.com/ttheme-project/ttheme](https://github.com/ttheme-project/ttheme), next to aninames. Links to the old address still lead there.

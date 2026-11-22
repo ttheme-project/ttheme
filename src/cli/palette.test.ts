@@ -16,6 +16,9 @@ test('palette consensus says a page that is not JSON is one it cannot read, whic
     Object.assign(async () => new Response('<!doctype html><title>Just a moment</title>'), { preconnect: () => {} }),
   )
 
+  const user = process.env.TTHEME_FIND_DANBOORU_USER
+  process.env.TTHEME_FIND_DANBOORU_USER = '1'
+
   try {
     await assert.rejects(
       () => runPalette('consensus', 'orla_(starfall)', {}),
@@ -23,6 +26,12 @@ test('palette consensus says a page that is not JSON is one it cannot read, whic
     )
   } finally {
     fetched.mockRestore()
+
+    if (user === undefined) {
+      delete process.env.TTHEME_FIND_DANBOORU_USER
+    } else {
+      process.env.TTHEME_FIND_DANBOORU_USER = user
+    }
   }
 })
 

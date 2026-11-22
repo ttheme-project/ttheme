@@ -42,6 +42,7 @@ export interface Account {
   setting: string
   label: string
   about: string
+  needed: boolean
   wants: string
   field: string
   ask: string
@@ -54,11 +55,12 @@ export interface Account {
 const DANBOORU_ACCOUNT: Account = {
   setting: 'TTHEME_FIND_DANBOORU_USER',
   label: 'Danbooru id',
-  about: 'Your danbooru user number, or your profile link — danbooru answers only requests that carry it',
+  about: 'Your danbooru user number or profile link — danbooru needs it',
+  needed: true,
   wants: 'your user id',
   field: 'User id',
   unread: 'Not a user number or a profile link',
-  ask: 'danbooru answers only requests that carry your user number. Log in, open your profile and paste its address or the number.',
+  ask: 'Paste your user number or your profile’s address.',
   profile: (origin) => `${origin}/profile`,
   read: (raw) => {
     const typed = (raw ?? '').trim()
@@ -73,6 +75,7 @@ const ZEROCHAN_ACCOUNT: Account = {
   setting: 'TTHEME_FIND_ZEROCHAN_USER',
   label: 'Zerochan name',
   about: 'Your zerochan username, which zerochan asks every request to carry',
+  needed: false,
   wants: 'your username',
   field: 'Username',
   unread: 'Not a username zerochan takes',
@@ -88,6 +91,10 @@ const ZEROCHAN_ACCOUNT: Account = {
 
 export function accountOf(site: Site): string {
   return site.account ? site.account.read(setting(site.account.setting)) : ''
+}
+
+export function unsigned(site: Site): boolean {
+  return site.account?.needed === true && !accountOf(site)
 }
 
 export function wantedAccount(error: unknown): string | undefined {

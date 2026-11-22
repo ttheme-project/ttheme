@@ -4,7 +4,7 @@ import { type Post, SITES, type Site } from '../../core/booru.ts'
 import { Boards } from './boards.ts'
 import type { Stage, Tile } from './screen.ts'
 
-const [ONE, TWO] = SITES as [Site, Site]
+const [ONE, TWO] = SITES.filter((site) => !site.account?.needed) as [Site, Site]
 
 function postOf(site: Site, id: number): Post {
   return {

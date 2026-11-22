@@ -77,10 +77,11 @@ export class Screen {
     this.paint()
   }
 
+  // Adds to a wipe no frame has written yet: a resize before that frame keeps what an earlier reset asked for.
   reset(wipe = ''): void {
     this.shown = []
     this.cursor = ''
-    this.wipe = wipe
+    this.wipe += wipe
 
     if (this.pointing === HAND) {
       this.pointing = ''

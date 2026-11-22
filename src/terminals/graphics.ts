@@ -1,5 +1,8 @@
 const CHUNK = /.{1,4096}/g
 
+// Deletes every picture on the screen, its data too.
+export const WIPE = '\x1b_Ga=d,d=A,q=2\x1b\\'
+
 export function graphic(control: string, data: string): string {
   const chunks = data.match(CHUNK) ?? ['']
 

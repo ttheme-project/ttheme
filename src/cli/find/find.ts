@@ -48,7 +48,7 @@ export async function findFor(
   home: string,
   entry: PaletteEntry,
   start?: Start,
-): Promise<{ saved: string | undefined; installs: number; handover: string }> {
+): Promise<{ saved: string | undefined; installs: number }> {
   const manifest = readAvailable(home)
   const finder = new Finder(home, manifest, entry, tagOf(manifest.works, entry), ioFor(home, entry), start)
   await finder.run(true)
@@ -57,7 +57,7 @@ export async function findFor(
     process.stdout.write(viewVar(''))
   }
 
-  return { saved: finder.saved, installs: finder.installs, handover: finder.handover }
+  return { saved: finder.saved, installs: finder.installs }
 }
 
 export async function runFind(name: string): Promise<number> {

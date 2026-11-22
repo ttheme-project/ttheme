@@ -25,6 +25,7 @@ import { POSITIONS } from '../../core/theme.ts'
 import type { Pick } from '../../pictures/fit.ts'
 import { Renderer } from '../../pictures/render.ts'
 import { blurOf, coloringFor, settingDefault, stickerOf } from '../../store/wiring.ts'
+import { WIPE } from '../../terminals/graphics.ts'
 import { CLEAR } from '../../terminals/terminal.ts'
 import type { Tone as NoticeTone } from '../bar.ts'
 import { edit, plain } from '../field.ts'
@@ -98,7 +99,6 @@ export class Finder {
   private peekTimer?: NodeJS.Timeout
   private readonly slowed = new Set<string>()
   private done?: (code: number) => void
-  handover = ''
   removed: Promise<void> = Promise.resolve()
   private readonly scratch = mkdtempSync(join(tmpdir(), 'ttheme-find-'))
 
@@ -384,8 +384,8 @@ export class Finder {
     view.nextSite = this.nextTabName
   }
 
-  // With `handing`, find leaves its screen up and puts what takes its pictures down in `handover`, for the
-  // screen that takes over to write in its first frame: clearing here would show a blank frame until then.
+  // With `handing`, find leaves its screen and pictures up when it ends well: the screen that takes over clears
+  // both in its own first frame, where clearing them here would show a blank frame until then.
   run(handing = false): Promise<number> {
     const burst = (typed: string) => layerOf(this.view).on !== 'query' && typedDrop(typed)
 
@@ -463,17 +463,15 @@ export class Finder {
         this.settings.quietCount()
         clearInterval(clock)
         this.paint.stop()
-        const takedown = '\x1b_Ga=d,d=A,q=2\x1b\\'
 
-        if (handed) {
-          this.handover = takedown
-        } else {
-          terminal.write(`${takedown}${CLEAR}`)
+        if (!handed) {
+          terminal.write(`${WIPE}${CLEAR}`)
         }
 
         this.renders.close()
-        // Off the way back: the screen that takes over draws while the downloads and renders go.
-        this.removed = rm(this.scratch, { recursive: true, force: true }).catch(() => {})
+        // Not awaited here, so the editor draws while it goes; `ttheme find` awaits `removed` before it exits. The
+        // retries cover a render worker still writing into the folder as `close` stops it.
+        this.removed = rm(this.scratch, { recursive: true, force: true, maxRetries: 3 }).catch(() => {})
       }
     })
   }

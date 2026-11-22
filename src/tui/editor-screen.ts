@@ -5,6 +5,7 @@ import type { Colors } from '../core/seeds.ts'
 import { grow, SEED_FIELDS, type Seeds } from '../core/seeds.ts'
 import { BASE, colorsOf, gatedOf, lchTight, PAIRS, slotLabel } from '../core/slots.ts'
 import { cells } from '../core/text.ts'
+import { WIPE } from '../terminals/graphics.ts'
 import { colorQuery, SLOT_CODES, slotColors } from '../terminals/osc.ts'
 import { CLEAR } from '../terminals/terminal.ts'
 import { fit, spread, wrapText } from './ansi.ts'
@@ -1145,25 +1146,23 @@ export async function runEditor(options: EditorOptions, surface: Surface): Promi
       away = true
       terminal.write(`${backdrop?.clear() ?? ''}${layer?.clear() ?? ''}`)
 
-      let handover = ''
-
       try {
-        const found = await find(editor.edited(), start)
-        handover = found.handover ?? ''
-        editor.found(found)
+        editor.found(await find(editor.edited(), start))
       } catch (error) {
         editor.say(error instanceof Error ? error.message : String(error), 'error')
       }
 
+      // find leaves its screen and pictures up for this first frame to clear: the editor sends all of its own
+      // pictures again after it, however find ended.
       if (over) {
-        terminal.write(handover)
+        terminal.write(`${WIPE}${CLEAR}`)
 
         return
       }
 
       away = false
       backdrop?.load()
-      screen.reset(`${handover}${CLEAR}`)
+      screen.reset(`${WIPE}${CLEAR}`)
       changed()
     }
 

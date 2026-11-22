@@ -1145,19 +1145,25 @@ export async function runEditor(options: EditorOptions, surface: Surface): Promi
       away = true
       terminal.write(`${backdrop?.clear() ?? ''}${layer?.clear() ?? ''}`)
 
+      let handover = ''
+
       try {
-        editor.found(await find(editor.edited(), start))
+        const found = await find(editor.edited(), start)
+        handover = found.handover ?? ''
+        editor.found(found)
       } catch (error) {
         editor.say(error instanceof Error ? error.message : String(error), 'error')
       }
 
       if (over) {
+        terminal.write(handover)
+
         return
       }
 
       away = false
       backdrop?.load()
-      screen.reset(CLEAR)
+      screen.reset(`${handover}${CLEAR}`)
       changed()
     }
 

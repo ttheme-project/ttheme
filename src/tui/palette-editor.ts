@@ -109,6 +109,8 @@ export interface Edited {
 export interface Found {
   note?: string
   count: number
+  // What find left for the editor's first frame to write: its pictures stay up until the editor replaces them.
+  handover?: string
 }
 
 export interface Exports {

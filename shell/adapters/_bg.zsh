@@ -608,7 +608,7 @@ __tt_pv_bg_find() {
   (( TTHEME_PALETTES_IN )) || __tt_palettes
   local name=$1 err var lab REPLY
   local -i rc n=${#TTHEME_SCENES}
-  local -x TTHEME_SCENE="" TTHEME_BG_MARGIN=""
+  local -x TTHEME_SCENE="" TTHEME_BG_MARGIN="" TTHEME_HANDOVER=1
   (( n )) && TTHEME_SCENE=${(L)TTHEME_SCENES[(scene % n + n) % n + 1]}
   (( bgrel )) && TTHEME_BG_MARGIN="$bgmx $bgmy"
   [[ $applied == "$painted" ]] || { __tt_apply "$applied" && painted=$applied }

@@ -323,9 +323,9 @@ function finder(home: string, name: string, text: (edited: Edited) => string): E
 
   return async (edited, start) => {
     const entry = paletteEntry(readOwnText(name, text(edited)))
-    const { saved } = await findFor(home, entry, start)
+    const { saved, handover } = await findFor(home, entry, start)
 
-    return { ...(saved ? { note: saved } : {}), count: rackOf(home, name).length }
+    return { ...(saved ? { note: saved } : {}), count: rackOf(home, name).length, handover }
   }
 }
 

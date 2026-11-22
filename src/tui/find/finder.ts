@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -97,6 +98,8 @@ export class Finder {
   private peekTimer?: NodeJS.Timeout
   private readonly slowed = new Set<string>()
   private done?: (code: number) => void
+  handover = ''
+  removed: Promise<void> = Promise.resolve()
   private readonly scratch = mkdtempSync(join(tmpdir(), 'ttheme-find-'))
 
   private readonly start: Start | undefined
@@ -381,7 +384,9 @@ export class Finder {
     view.nextSite = this.nextTabName
   }
 
-  run(): Promise<number> {
+  // With `handing`, find leaves its screen up and puts what takes its pictures down in `handover`, for the
+  // screen that takes over to write in its first frame: clearing here would show a blank frame until then.
+  run(handing = false): Promise<number> {
     const burst = (typed: string) => layerOf(this.view).on !== 'query' && typedDrop(typed)
 
     return within({ modes: [PASTES, ...pointing()], assume: [HIDE_CURSOR, NO_WRAP], burst }, async (terminal) => {
@@ -402,6 +407,7 @@ export class Finder {
       })
 
       const clock = setInterval(this.onClock, 250)
+      let handed = false
 
       try {
         const probe = new CellProbe()
@@ -443,7 +449,10 @@ export class Finder {
 
         this.paint.draw()
 
-        return await terminal.until(exit)
+        const code = await terminal.until(exit)
+        handed = handing
+
+        return code
       } finally {
         this.session.abort()
         this.own.stop()
@@ -454,9 +463,17 @@ export class Finder {
         this.settings.quietCount()
         clearInterval(clock)
         this.paint.stop()
-        terminal.write(`\x1b_Ga=d,d=A,q=2\x1b\\${CLEAR}`)
+        const takedown = '\x1b_Ga=d,d=A,q=2\x1b\\'
+
+        if (handed) {
+          this.handover = takedown
+        } else {
+          terminal.write(`${takedown}${CLEAR}`)
+        }
+
         this.renders.close()
-        rmSync(this.scratch, { recursive: true, force: true })
+        // Off the way back: the screen that takes over draws while the downloads and renders go.
+        this.removed = rm(this.scratch, { recursive: true, force: true }).catch(() => {})
       }
     })
   }

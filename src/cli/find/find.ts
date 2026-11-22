@@ -48,16 +48,16 @@ export async function findFor(
   home: string,
   entry: PaletteEntry,
   start?: Start,
-): Promise<{ saved: string | undefined; installs: number }> {
+): Promise<{ saved: string | undefined; installs: number; handover: string }> {
   const manifest = readAvailable(home)
   const finder = new Finder(home, manifest, entry, tagOf(manifest.works, entry), ioFor(home, entry), start)
-  await finder.run()
+  await finder.run(true)
 
   if (viewsInWindow(process.env)) {
     process.stdout.write(viewVar(''))
   }
 
-  return { saved: finder.saved, installs: finder.installs }
+  return { saved: finder.saved, installs: finder.installs, handover: finder.handover }
 }
 
 export async function runFind(name: string): Promise<number> {
@@ -70,13 +70,23 @@ export async function runFind(name: string): Promise<number> {
   }
 
   const finder = new Finder(home, manifest, entry, tagOf(manifest.works, entry), ioFor(home, entry))
-  const code = await finder.run()
+  // Preview redraws its whole screen when find returns, so find leaves its own up instead of clearing it first.
+  const code = await finder.run(process.env.TTHEME_HANDOVER === '1')
+  const saved = finder.saved && code !== 0
 
-  if (finder.saved && code !== 0) {
+  if (saved) {
     process.stderr.write(`${finder.saved}\n`)
-
-    return 0
   }
 
-  return code
+  await finder.removed
+  await Promise.all([flushed(process.stdout), flushed(process.stderr)])
+  // A request find gave up on keeps this process alive until its connection finishes opening, up to half a
+  // second, while preview waits on it to draw again: once find is done and its output is out, it ends here.
+  process.exit(saved ? 0 : code)
+}
+
+function flushed(stream: NodeJS.WriteStream): Promise<void> {
+  return new Promise((done) => {
+    stream.write('', () => done())
+  })
 }

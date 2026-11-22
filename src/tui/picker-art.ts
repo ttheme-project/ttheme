@@ -991,6 +991,7 @@ function release(id: number): string {
 export class PickerLayer {
   private cell: Cell = { w: 0, h: 0 }
   private readonly shown = new Map<Name, Shown>()
+  private readonly made = new Map<Name, { key: string; png: Buffer }>()
   private stale = false
   private layout: { key: string; masks: PanelMasks } | undefined
 
@@ -1078,6 +1079,21 @@ export class PickerLayer {
     const id = was?.id === base ? base + 1 : base
     this.shown.set(piece.name, { key: piece.key, id, at })
 
-    return `${transmit(id, encodeRgba(piece.paint()))}${place(id, piece.box, piece.z)}${was ? release(was.id) : ''}`
+    return `${transmit(id, this.png(piece))}${place(id, piece.box, piece.z)}${was ? release(was.id) : ''}`
+  }
+
+  // Painting is the slow part of a frame that sends every piece again (after find, a resize): a piece's key
+  // already names its pixels, so the PNG it made last time is sent as it was.
+  private png(piece: Piece): Buffer {
+    const made = this.made.get(piece.name)
+
+    if (made?.key === piece.key) {
+      return made.png
+    }
+
+    const png = encodeRgba(piece.paint())
+    this.made.set(piece.name, { key: piece.key, png })
+
+    return png
   }
 }

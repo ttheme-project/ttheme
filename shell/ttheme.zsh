@@ -2,6 +2,16 @@ typeset -g TTHEME_CODE=${${(%):-%x}:A:h}
 typeset -g TTHEME_HOME=${TTHEME_CODE:h:h} TTHEME_LAYER=${(M)${TTHEME_CODE:t}:#<->.<->.<->} TTHEME_PALETTES_AT="" TTHEME_APPEARANCE_AT=""
 typeset -gi TTHEME_PALETTES_IN=0
 
+__tt_mark() {
+  emulate -L zsh
+  (( $+EPOCHREALTIME )) || zmodload -F zsh/datetime p:EPOCHREALTIME
+  local t=$'\t' n=$'\n' r=$'\r'
+  print -r -- "$EPOCHREALTIME$t$$${t}zsh$t$1$t${${2-}//[$t$n$r]/ }" >> $TTHEME_TRACE
+  return 0
+} 2>/dev/null
+
+[[ -z ${TTHEME_TRACE-} ]] || __tt_mark shell.start
+
 zmodload -F zsh/stat b:zstat 2>/dev/null
 
 typeset -gA TTHEME_SGR=(
@@ -136,6 +146,7 @@ __tt_fresh() {
 
 __tt_prompt() {
   emulate -L zsh ${=${options[xtrace]:#off}:+-o xtrace}
+  [[ -z ${TTHEME_TRACE-} ]] || __tt_mark prompt
   (( TTHEME_FRONT < 0 || ! TTHEME_RAN )) || TTHEME_FRONT=0
   [[ -n $TTHEME_SSH_SPEC ]] && __tt_ssh_back
   __tt_fresh
@@ -810,6 +821,7 @@ __tt_rewear() {
 __tt_focus() {
   emulate -L zsh ${=${options[xtrace]:#off}:+-o xtrace}
   local -a TTHEME_NOTES=()
+  [[ -z ${TTHEME_TRACE-} ]] || __tt_mark focus.in
   TTHEME_FRONT=1
   __tt_fresh
   if (( TTHEME_TMUX )); then
@@ -817,6 +829,7 @@ __tt_focus() {
   else
     __tt_sync
   fi
+  [[ -z ${TTHEME_TRACE-} ]] || __tt_mark focus.done
   (( ${#TTHEME_NOTES} )) || return 0
   zle && zle -I
   print -u2 -rl -- $TTHEME_NOTES
@@ -1927,7 +1940,12 @@ __tt_cli() {
     (( $+parameters[$k] )) && pass+=("$k=${(P)k}")
   done
   __tt_cli_env "$@"
-  env $pass node $TTHEME_HOME/current/ttheme.js "$@"
+  [[ -n ${TTHEME_TRACE-} ]] || { env $pass node $TTHEME_HOME/current/ttheme.js "$@"; return }
+  local -i rc=0
+  __tt_mark cli.start "$1"
+  env $pass node $TTHEME_HOME/current/ttheme.js "$@" || rc=$?
+  __tt_mark cli.end "$1 $rc"
+  return $rc
 }
 
 __tt_installs() {
@@ -2196,8 +2214,10 @@ ttheme() {
   __tt_behind && return 1
   __tt_stamp
   was=$REPLY
+  [[ -z ${TTHEME_TRACE-} ]] || __tt_mark verb.start "$1"
   __tt_verb "$@"
   ret=$?
+  [[ -z ${TTHEME_TRACE-} ]] || __tt_mark verb.end "$1 $ret"
   __tt_stamp
   [[ $REPLY == "$was" ]] || __tt_wake
   return $ret
@@ -2403,4 +2423,5 @@ fi
   }
   __tt_hook
   __tt_announce
+  [[ -z ${TTHEME_TRACE-} ]] || __tt_mark shell.ready
 }

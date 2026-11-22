@@ -26,6 +26,7 @@ import {
   uncredited,
 } from '../core/booru.ts'
 import { pngHead } from '../core/png.ts'
+import { mark } from '../core/trace.ts'
 import { bodyWithin, firstBytes } from '../store/available.ts'
 
 const HEAD = 8191
@@ -172,6 +173,8 @@ async function get(
     const clock = first && setTimeout(() => first.abort(new DOMException('no answer in time', 'TimeoutError')), TIMEOUT)
     let response: Response
 
+    mark('net.start', at)
+
     try {
       response = await fetch(at, {
         headers: { 'User-Agent': agent, Referer: `${site.origin}/`, ...headers },
@@ -179,6 +182,8 @@ async function get(
         signal: AbortSignal.any([signal, first ? first.signal : AbortSignal.timeout(timeout)]),
       })
     } catch (error) {
+      mark('net.fail', at)
+
       if (tries < TRIES && !signal.aborted && reset(error)) {
         continue
       }
@@ -188,6 +193,7 @@ async function get(
       clearTimeout(clock)
     }
 
+    mark('net.head', `${response.status} ${at}`)
     const to = response.headers.get('location')
 
     if (to && response.status >= 300 && response.status < 400 && hops < HOPS) {
@@ -401,8 +407,10 @@ export async function fetchBytes(
 ): Promise<Uint8Array> {
   const response = await get(site, url, signal, { timeout: 0 })
   const tooLarge = `${site.name} sent a file over ${FILE_MOST / 1024 / 1024} MB`
+  const bytes = await bodyWithin(response, FILE_MOST, tooLarge, progress, TIMEOUT)
+  mark('net.body', url)
 
-  return bodyWithin(response, FILE_MOST, tooLarge, progress, TIMEOUT)
+  return bytes
 }
 
 export async function fetchProfiles(

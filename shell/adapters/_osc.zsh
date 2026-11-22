@@ -1,4 +1,5 @@
 __tt_out() {
+  [[ -z ${TTHEME_TRACE-} ]] || __tt_mark osc.write
   if (( TTHEME_TMUX )); then
     local e=$'\e'
     printf '\ePtmux;%s\e\\' "${1//$e/$e$e}"

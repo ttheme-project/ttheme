@@ -1,5 +1,6 @@
 import type { Readable, Writable } from 'node:stream'
 import { SIGNALS, Signalled } from '../core/cancelled.ts'
+import { mark, tracing } from '../core/trace.ts'
 import { type Cell, type Inbound, KEYBOARD_QUERY, Keys, type Mouse } from './keys.ts'
 
 interface Mode {
@@ -352,6 +353,7 @@ export class Terminal {
 
   private readonly received = (chunk: Buffer | string): void => {
     if (topFor(this.input) === this && !this.aborted) {
+      mark('input.bytes')
       this.keys.feed(chunk)
     }
   }
@@ -377,6 +379,18 @@ export class Terminal {
   }
 
   private deliver(heard: Inbound[]): void {
+    if (tracing()) {
+      for (const event of heard) {
+        if (event.kind === 'key') {
+          mark('input.key', event.key)
+        } else if (event.kind === 'paste') {
+          mark('input.key', 'paste')
+        } else if (event.kind === 'mouse' && event.action !== 'move') {
+          mark('input.key', `mouse.${event.action}`)
+        }
+      }
+    }
+
     const events = heard.filter((event) => event.kind !== 'keyboard')
 
     if (events.length < heard.length && this.open && !this.enhanced) {

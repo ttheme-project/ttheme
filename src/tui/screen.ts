@@ -1,4 +1,5 @@
 import { performance } from 'node:perf_hooks'
+import { mark } from '../core/trace.ts'
 import { colorless } from '../terminals/osc.ts'
 import { fit } from './ansi.ts'
 import type { Mouse } from './keys.ts'
@@ -171,6 +172,7 @@ export class Screen {
 
     if (out || after || moved) {
       this.write(`${BEGIN}${out}${after}${RESET}${moved ? cursor : ''}${END}`)
+      mark(frame.ticking ? 'frame.tick' : 'frame.write', String(rewritten.size))
     }
 
     this.tick(frame.ticking === true)
@@ -244,5 +246,6 @@ export class Inline {
 
     this.shown = lines
     this.write(`${BEGIN}${back}${out}${END}`)
+    mark('frame.write', 'inline')
   }
 }

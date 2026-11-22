@@ -2063,6 +2063,7 @@ __tt_pv_read() {
     __tt_pv_getch 0 || return 1
   else
     __tt_pv_getch || return 1
+    [[ -z ${TTHEME_TRACE-} ]] || __tt_mark input.bytes
   fi
   key=$REPLY
   [[ -z $flt && $key == ç ]] && key=altc
@@ -3525,9 +3526,11 @@ __tt_preview() {
       printf '\e[?2026h'
       if (( tick )) && __tt_pv_hints; then
         __tt_pv_draw hint
+        [[ -z ${TTHEME_TRACE-} ]] || __tt_mark frame.tick
       else
         __tt_pv_focus
         __tt_pv_draw
+        [[ -z ${TTHEME_TRACE-} ]] || __tt_mark frame.write
       fi
       tick=0 mlwheel=0 pvquiet=1
       (( mhrow )) && __tt_pv_hovered
@@ -3544,6 +3547,7 @@ __tt_preview() {
         fi
         while :; do
           [[ $key == (mouse|nop) ]] || __tt_pv_unhover
+          [[ -z ${TTHEME_TRACE-} || $key == nop ]] || __tt_mark input.key $key
           __tt_pv_handle || break 3
           __tt_pv_read drain || break
         done
@@ -3570,6 +3574,7 @@ __tt_preview() {
     printf '\e[?2004l\e[?7h'
     (( hubleft )) || printf '\e[?1049l'
     printf '\e[?25h\e[?2026l'
+    [[ -z ${TTHEME_TRACE-} ]] || __tt_mark frame.write leave
     [[ -n $pointed ]] && __tt_ask ""
     [[ -n $tty ]] && stty "$tty" 2>/dev/null
     TTHEME_RAW=0

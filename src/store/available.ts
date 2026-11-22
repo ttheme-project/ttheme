@@ -24,6 +24,7 @@ import {
 import { marketplaceLayout, type Report, readMarketplaceFiles, readWorkFiles, workLayout } from '../core/own.ts'
 import { containsText } from '../core/text.ts'
 import { BUILTIN, type Identity, isBuiltin, MARKETPLACE_FILE, marketplaceId, slugOf } from '../core/theme.ts'
+import { mark } from '../core/trace.ts'
 import { writeAtomic } from './edits.ts'
 import { readLocal, warning } from './local.ts'
 import {
@@ -408,12 +409,17 @@ export async function reach(
     sent.set('user-agent', AGENT)
   }
 
+  mark('net.start', url)
+
   try {
     const limit = AbortSignal.timeout(timeout)
     response = await fetch(url, { headers: sent, signal: signal ? AbortSignal.any([limit, signal]) : limit })
   } catch (error) {
+    mark('net.fail', url)
     throw new Unreachable(`cannot reach ${url} — ${whyNot(error, timeout)}`)
   }
+
+  mark('net.head', `${response.status} ${url}`)
 
   if (response.status === 404) {
     throw new Missing(`nothing at ${url}`)

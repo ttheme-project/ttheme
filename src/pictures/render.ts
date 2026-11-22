@@ -6,6 +6,7 @@ import { MAX_PIXELS } from '../core/booru.ts'
 import type { Hex } from '../core/color.ts'
 import { contain, decodeImage, encodeRgba, transparency } from '../core/png.ts'
 import type { SharedPicture } from '../core/theme.ts'
+import { mark } from '../core/trace.ts'
 import { writeAtomic } from '../store/edits.ts'
 import {
   backgroundsDir,
@@ -284,6 +285,7 @@ class Line {
       const worker = this.open()
       this.waiting.set(id, { ok, no })
       worker.ref()
+      mark('render.start', `${id} ${task.job}`)
       worker.postMessage({ ...task, id })
     })
   }
@@ -302,6 +304,7 @@ class Line {
     const worker = new Worker(import.meta.filename)
     worker.unref()
     worker.on('message', (reply: Reply) => {
+      mark('render.end', String(reply.id))
       const held = this.waiting.get(reply.id)
       this.waiting.delete(reply.id)
 

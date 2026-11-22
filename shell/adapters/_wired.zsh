@@ -3,6 +3,7 @@ typeset -gi TTHEME_GHOSTTY_SENT=0
 
 __tt_reload() {
   local wired
+  [[ -z ${TTHEME_TRACE-} ]] || __tt_mark reload
   for wired in $TTHEME_TERMINALS; do
     (( $+functions[__tt_reload_$wired] )) && __tt_reload_$wired
   done

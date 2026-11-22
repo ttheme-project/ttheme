@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { LOCAL } from './attach.ts'
 import { Installs } from './installs.ts'
+import type { Current } from './trial.ts'
 
 test('leaving while an install waits behind the render on its way installs it before find closes', async () => {
   const tune = { size: 'fill', at: 3, opacity: 0.18 }
@@ -33,6 +34,7 @@ test('leaving while an install waits behind the render on its way installs it be
       failed: false,
     },
     leave: () => {},
+    whole: async (current: Current) => current,
   }
 
   const session = new AbortController()

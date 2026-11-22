@@ -74,6 +74,11 @@ export class Kept {
   }
 
   async transparent(site: Site, post: Post): Promise<boolean> {
+    return (await this.alpha(site, post)) === true
+  }
+
+  // Whether the post's file carries an alpha channel, or undefined where its head could not be fetched.
+  async alpha(site: Site, post: Post): Promise<boolean | undefined> {
     const known = this.keep<boolean>(site, 'probes.json')
     const cached = known[post.id]
 
@@ -92,7 +97,7 @@ export class Kept {
 
       return alpha
     } catch {
-      return false
+      return undefined
     }
   }
 

@@ -217,6 +217,8 @@ export interface TrialView {
   work?: Work
   redraw?: { key: number; from: number; done: boolean }
   shown?: Shown
+  // The post's preview drawn as the try view would draw it, held up until its own picture is shown.
+  sketch?: { id: number; path: string }
 }
 
 export interface ThumbsView {
@@ -895,7 +897,7 @@ function details(lines: Line[], row: number, col: number, room: number, maxRow: 
 
   const file = [
     `${tile.width}×${tile.height}${info.ext ? ` ${info.ext.toUpperCase()}` : ''}`,
-    ...(shown ? [megabytes(shown.bytes)] : []),
+    ...(shown && shown.bytes > 0 ? [megabytes(shown.bytes)] : []),
   ].join(SEP)
 
   const rated = [info.rating ?? '—', tile.score > 0 ? `★${tile.score}` : '', info.posted ?? '']
@@ -1848,7 +1850,7 @@ function trial(lines: Line[], images: Placement[], cols: number, rows: number, v
     meta.push([`${SEP}★${tile.score}`, D])
   }
 
-  if (shown) {
+  if (shown && shown.bytes > 0) {
     meta.push([`${SEP}${megabytes(shown.bytes)}`, D])
   }
 
@@ -1890,8 +1892,10 @@ function trial(lines: Line[], images: Placement[], cols: number, rows: number, v
     specimen(lines, 7, 2, (beside ? cols - wide - 2 : cols) - 4, rows - 2, view, accent)
   }
 
-  if (view.shown) {
-    images.push({ id: TRY_ID + view.shown.id, path: view.shown.path, row: 0, col: 0, cols, rows, z: BELOW_BG })
+  const laid = shown ?? (view.sketch?.id === tile.key ? view.sketch : view.shown)
+
+  if (laid) {
+    images.push({ id: TRY_ID + laid.id, path: laid.path, row: 0, col: 0, cols, rows, z: BELOW_BG })
   }
 
   if (tuning) {

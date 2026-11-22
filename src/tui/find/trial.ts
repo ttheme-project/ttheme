@@ -1,10 +1,10 @@
 import { closeSync, existsSync, mkdirSync, openSync, readSync, rmSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import type { Tone } from '../../core/backdrop-tone.ts'
-import { fileOf, postKey, type Rendition, rendition, type Site } from '../../core/booru.ts'
+import { extension, fileOf, type Post, postKey, type Rendition, rendition, type Site } from '../../core/booru.ts'
 import type { PaletteEntry } from '../../core/manifest.ts'
-import { pngHead } from '../../core/png.ts'
 import { resized, TUNE, TUNE_SIZE_LEAST } from '../../core/picture-panel.ts'
+import { pngHead } from '../../core/png.ts'
 import { fillSize, rescaled } from '../../pictures/backdrop.ts'
 import { canRemoveBackground, keepable, removeBackground } from '../../pictures/cutout.ts'
 import type { Pick } from '../../pictures/fit.ts'
@@ -15,7 +15,7 @@ import type { Boards } from './boards.ts'
 import type { Kept } from './kept.ts'
 import type { Paint } from './paint.ts'
 import type { FindSpot, FindView, Notice, Owns, Tile, TrialView, Tuning, Work } from './screen.ts'
-import { type Grid, heldPath, type Net, origPath, reason } from './session.ts'
+import { type Grid, heldPath, type Net, origPath, previewPath, reason } from './session.ts'
 import type { Settings } from './settings.ts'
 import type { Thumbs } from './thumbs.ts'
 
@@ -29,8 +29,10 @@ const TUNED_HELD = 16
 
 const HEAD_READ = 65_536
 
+const JPEG = new Set(['jpg', 'jpeg'])
+
 function opaqueFile(path: string, ext: string): boolean {
-  if (ext === 'jpg') {
+  if (JPEG.has(ext)) {
     return true
   }
 
@@ -66,6 +68,14 @@ function scaleOf(opacity: number, base: number): number | undefined {
   return opacity === base || base <= 0 ? undefined : opacity / base
 }
 
+// A post's own file, where the try view draws from a smaller copy of it.
+interface Whole {
+  site: Site
+  path: string
+  url: string
+  ext: string
+}
+
 export interface Current {
   site: Site
   id: number
@@ -77,6 +87,11 @@ export interface Current {
   using: 'plain' | 'cut'
   failed: boolean
   fill?: number
+  whole?: Whole
+}
+
+interface Source extends Whole {
+  whole?: Whole
 }
 
 function clarityKey(
@@ -85,8 +100,9 @@ function clarityKey(
   coloring: FindView['coloring'],
   width: number,
   height: number,
+  tag = '',
 ): string {
-  return `${current.site.key}:${current.id}:${using}:${coloring}:${width}x${height}`
+  return `${current.site.key}:${current.id}${tag}:${using}:${coloring}:${width}x${height}`
 }
 
 interface Host {
@@ -221,6 +237,7 @@ export class Trial {
     this.cancel()
     this.current = undefined
     this.view.shown = undefined
+    this.view.sketch = undefined
   }
 
   stop(): void {
@@ -573,6 +590,10 @@ export class Trial {
       return
     }
 
+    if (view.shown?.id !== tile.key) {
+      void this.sketch(tile, pick, job)
+    }
+
     const { site } = pick
     let instead: Pick | undefined
 
@@ -610,22 +631,23 @@ export class Trial {
     const view = this.view
     const { site } = pick
     const { signal } = job.control
-    await this.net.locate(site, pick.post, signal)
-    const version = rendition(pick.post) as Rendition
-    const path = origPath(this.scratch, site, tile.id, version.ext)
+    const source = await this.sourceOf(pick, signal)
+    const { path } = source
     const fetching: Work = { step: 'fetch', key: tile.key, got: 0, size: 0 }
+
+    if (this.job !== job) {
+      return undefined
+    }
 
     if (!existsSync(path)) {
       this.doing(job, fetching)
       this.paint.draw()
     }
 
-    const from = fileOf(site, pick.post, version)
-
     const size = await this.kept.cached(
-      from.site,
+      source.site,
       path,
-      from.url,
+      source.url,
       (got, total) => {
         if (view.work === fetching) {
           fetching.got = got
@@ -645,25 +667,32 @@ export class Trial {
       id: tile.id,
       key: tile.key,
       path,
-      ext: version.ext,
-      size,
+      ext: source.ext,
+      size: source.whole ? 0 : size,
       using: 'plain',
       failed: false,
+      ...(source.whole ? { whole: source.whole } : {}),
     }
 
     const cuts = canRemoveBackground() && this.settings.setting('TTHEME_FIND_REMOVE_BG') !== 'off'
     const early = new AbortController()
+
     const cutting =
-      cuts && opaqueFile(path, version.ext)
+      cuts && opaqueFile(path, source.ext)
         ? this.cutOut(site, tile.id, path, AbortSignal.any([signal, early.signal]))
         : undefined
 
     this.doing(job, { step: 'prepare', key: tile.key })
     this.paint.flush()
-    const plain = await this.render(current, 'plain').catch((error: unknown) => {
+
+    let plain: Awaited<ReturnType<Trial['render']>>
+
+    try {
+      plain = await this.render(current, 'plain')
+    } catch (error) {
       early.abort()
       throw error
-    })
+    }
 
     if (this.job !== job) {
       return undefined
@@ -721,9 +750,132 @@ export class Trial {
       }
     }
 
+    this.fetchWhole(current)
     this.preload()
 
     return undefined
+  }
+
+  // The file the try view draws from: the post's own, or, where the post is opaque and its own is not here yet,
+  // the smallest JPEG copy as wide as the try view, which comes in a fraction of the time. A transparent post,
+  // or one whose head could not be read, draws from its own, since every copy is a JPEG.
+  private async sourceOf(pick: Pick, signal: AbortSignal): Promise<Source> {
+    const { site, post } = pick
+    await this.net.locate(site, post, signal)
+    const version = rendition(post) as Rendition
+    const own = fileOf(site, post, version)
+
+    const whole: Whole = {
+      site: own.site,
+      path: origPath(this.scratch, site, post.id, version.ext),
+      url: own.url,
+      ext: version.ext,
+    }
+
+    const copy = existsSync(whole.path) ? undefined : this.copyOf(post, version)
+
+    if (!copy || !(JPEG.has(version.ext) || (await this.kept.alpha(site, post)) === false)) {
+      return whole
+    }
+
+    const small = fileOf(site, post, copy)
+
+    return {
+      site: small.site,
+      path: heldPath(this.scratch, site, 'copy', `${post.id}.${copy.ext}`),
+      url: small.url,
+      ext: copy.ext,
+      whole,
+    }
+  }
+
+  // A copy at most half the post's pixels: a nearer one saves too little to be worth a second download.
+  private copyOf(post: Post, version: Rendition): Rendition | undefined {
+    const { width, height } = this.tryBox()
+
+    return post.smaller
+      .filter(
+        (v) =>
+          JPEG.has(v.ext) &&
+          v.width >= width &&
+          v.height >= height &&
+          2 * v.width * v.height <= version.width * version.height,
+      )
+      .sort((a, b) => a.width * a.height - b.width * b.height)[0]
+  }
+
+  // Fetches the post's own file behind a try view drawn from a copy, for its size on the panel and for an
+  // install, which takes the post's own.
+  private fetchWhole(current: Current): void {
+    const whole = current.whole
+
+    if (!whole) {
+      return
+    }
+
+    this.kept
+      .cached(whole.site, whole.path, whole.url, undefined, current.key)
+      .then((size) => {
+        current.size = size
+        const shown = this.view.shown
+
+        if (shown?.id === current.key) {
+          this.view.shown = { ...shown, bytes: size }
+          this.paint.draw()
+        }
+      })
+      .catch(() => {})
+  }
+
+  // What installs: the post's own file in place of the copy the try view drew from, cut out again where the
+  // try view showed it cut out.
+  async whole(current: Current): Promise<Current> {
+    const whole = current.whole
+
+    if (!whole) {
+      return current
+    }
+
+    const size = await this.kept.cached(whole.site, whole.path, whole.url)
+    const { cut: _cut, whole: _whole, ...rest } = current
+    const own: Current = { ...rest, path: whole.path, ext: whole.ext, size }
+
+    if (current.using === 'cut') {
+      own.cut = await this.cutOut(current.site, current.id, whole.path, this.signal)
+      own.using = own.cut ? 'cut' : 'plain'
+    }
+
+    return own
+  }
+
+  // Draws the post's preview, which the grid already holds, the way the try view will draw the post, to hold
+  // its place while the post comes.
+  private async sketch(tile: Tile, pick: Pick, job: Job): Promise<void> {
+    const preview = previewPath(this.scratch, pick)
+
+    if (!existsSync(preview)) {
+      return
+    }
+
+    const stand: Current = {
+      site: pick.site,
+      id: tile.id,
+      key: tile.key,
+      path: preview,
+      ext: extension(preview),
+      size: 0,
+      using: 'plain',
+      failed: false,
+    }
+
+    try {
+      const made = await this.render(stand, 'plain', undefined, 's')
+
+      if (this.job === job && this.view.shown?.id !== tile.key) {
+        this.view.sketch = { id: tile.key, path: made.path }
+        this.paint.draw()
+      }
+    } catch {}
   }
 
   private async twinOf(pick: Pick, whole: string, job: Job): Promise<Pick | undefined> {
@@ -807,7 +959,8 @@ export class Trial {
   }
 
   private async cutOut(site: Site, id: number, path: string, signal: AbortSignal): Promise<string | undefined> {
-    const out = heldPath(this.scratch, site, 'cut', `${id}.png`)
+    // A cut of a copy is kept apart from the cut of the post's own file, which an install makes.
+    const out = heldPath(this.scratch, site, 'cut', `${id}${basename(dirname(path)) === 'copy' ? '-copy' : ''}.png`)
 
     if (existsSync(out)) {
       return out
@@ -877,17 +1030,14 @@ export class Trial {
 
       const { site, post } = pick
       this.prefetching++
-      void this.net
-        .locate(site, post, this.signal)
-        .then(async () => {
-          const version = rendition(post) as Rendition
-          const path = origPath(this.scratch, site, post.id, version.ext)
-          const from = fileOf(site, post, version)
-          await this.kept.cached(from.site, path, from.url, undefined, tile.key)
+      void this.sourceOf(pick, this.signal)
+        .then(async (source) => {
+          const { path } = source
+          await this.kept.cached(source.site, path, source.url, undefined, tile.key)
 
           return this.inTurn(() =>
             this.render(
-              { site, id: post.id, key: tile.key, path, ext: version.ext, size: 0, using: 'plain', failed: false },
+              { site, id: post.id, key: tile.key, path, ext: source.ext, size: 0, using: 'plain', failed: false },
               'plain',
               'ahead',
             ),
@@ -904,6 +1054,7 @@ export class Trial {
     current: Current,
     using: 'plain' | 'cut',
     lane?: Lane,
+    tag = '',
   ): Promise<{ clear: number; path: string; opacity: number; touched: boolean }> {
     const W = this.grid().cols * this.grid().cell.w
     const H = this.grid().rows * this.grid().cell.h
@@ -924,10 +1075,10 @@ export class Trial {
 
     const path = join(
       this.scratch,
-      `${current.site.key}-${current.id}${using === 'cut' ? 'c' : ''}${coloring === 'original' ? 'o' : ''}-${width}x${height}${mark}.png`,
+      `${current.site.key}-${current.id}${tag}${using === 'cut' ? 'c' : ''}${coloring === 'original' ? 'o' : ''}-${width}x${height}${mark}.png`,
     )
 
-    const key = clarityKey(current, using, coloring, width, height)
+    const key = clarityKey(current, using, coloring, width, height, tag)
     const known = this.clarity.get(key)
 
     if (known && existsSync(path)) {

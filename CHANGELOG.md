@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Trying a picture on in find shows it at once: its preview stands in, drawn as the picture will be, until the picture itself is ready. A picture with no transparency is tried on from the site's smaller copy, which comes in a fraction of the time, and installs from the full file, which find fetches meanwhile.
 - Leaving find with esc goes straight back to Preview's picture panel or the palette editor, with no blank screen in between. Before, the screen stayed empty until find had let go of the sites it was still connecting to, up to half a second.
 - Without your danbooru user number, find's danbooru tab carries a `!` and asks for it each time you open the tab. `ttheme palette consensus` and `ttheme info` name the missing setting instead of saying to try again in a minute.
 

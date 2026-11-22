@@ -31,7 +31,6 @@ function toTune(tune: Tuning, untuned: Tuning): Tune | undefined {
 
 interface Queued {
   current: Current
-  from: string
   tune: Tune | undefined
   coloring: FindView['coloring']
   framing: string
@@ -178,7 +177,6 @@ export class Installs {
 
     this.queue.push({
       current,
-      from: current.using === 'cut' ? (current.cut as string) : current.path,
       tune,
       coloring: view.coloring,
       framing: tune ? `  ${size === 'fill' ? 'fill' : `${size}%`}  ${POSITIONS[at - 1]}  ${opacity.toFixed(2)}` : '',
@@ -212,11 +210,21 @@ export class Installs {
     this.rest()
   }
 
-  private async installOne({ current, from, tune, coloring, framing, post, profiled, touches }: Queued): Promise<void> {
+  private async installOne({
+    current: shown,
+    tune,
+    coloring,
+    framing,
+    post,
+    profiled,
+    touches,
+  }: Queued): Promise<void> {
     const view = this.view
 
     try {
       await profiled
+      const current = await this.trial.whole(shown)
+      const from = current.using === 'cut' ? (current.cut as string) : current.path
       await this.renders.run({
         job: 'backdrop',
         from,
@@ -260,7 +268,7 @@ export class Installs {
     } catch (error) {
       if (!this.signal.aborted) {
         this.notice(
-          `${current.site.name} ${current.id} — ${error instanceof Error ? error.message : String(error)}`,
+          `${shown.site.name} ${shown.id} — ${error instanceof Error ? error.message : String(error)}`,
           'error',
         )
       }

@@ -81,7 +81,7 @@ guard trace >= 0 else {
 
 func sent(_ name: String) {
   let at = Double(clock_gettime_nsec_np(CLOCK_REALTIME)) / 1e9
-  let line = Array(String(format: "%.6f\t%d\tkeys\tinput.sent\t%@\n", at, getpid(), name).utf8)
+  let line = Array(String(format: "%.6f\t%d\t%d\tkeys\tinput.sent\t%@\n", at, getpid(), getppid(), name).utf8)
   _ = line.withUnsafeBytes { write(trace, $0.baseAddress, $0.count) }
 }
 

@@ -12,31 +12,33 @@ function closedPipe(error: NodeJS.ErrnoException): void {
   }
 }
 
-function wallClock(): () => number {
-  const edge = Date.now()
-  let now = edge
+const LONG_LIVED = 5000
 
-  while (now === edge) {
-    now = Date.now()
+function behind(origin: number): number {
+  const edge = Date.now()
+  let wall = edge
+
+  while (wall === edge) {
+    wall = Date.now()
   }
 
-  const offset = now - performance.now()
-
-  return () => offset + performance.now()
+  return wall - (origin + performance.now())
 }
 
 function traceInto(file: string): void {
-  const now = wallClock()
-  traceWith(now)
-  mark('proc.start', process.argv.slice(2).join(' '), now() - performance.now())
+  const origin = performance.timeOrigin
+  traceWith(() => performance.now())
+  mark('proc.start', process.argv.slice(2).join(' '), 0)
   mark('proc.main')
 
   process.on('exit', (code) => {
     mark('proc.exit', String(code))
+    const end = performance.now()
+    const lean = end > LONG_LIVED ? behind(origin) / end : 0
 
     const lines = marked().map(
       (each) =>
-        `${(each.at / 1000).toFixed(6)}\t${process.pid}\tnode\t${each.name}\t${each.detail.replace(/[\t\n\r]/g, ' ')}\n`,
+        `${((origin + each.at * (1 + lean)) / 1000).toFixed(6)}\t${process.pid}\t${process.ppid}\tnode\t${each.name}\t${each.detail.replace(/[\t\n\r]/g, ' ')}\n`,
     )
 
     try {

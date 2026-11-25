@@ -710,6 +710,7 @@ __tt_pv_spin() {
   local -i vf=$(( EPOCHREALTIME / 0.08 ))
   (( color )) || d= z=
   printf '\e[?2026h\e[%d;%dH%s\e[%d;%dH\e[?2026l' $ph $vspin $d${TTHEME_SPINNER[vf % ${#TTHEME_SPINNER} + 1]}$z $pvsr $pvsc
+  [[ -z ${TTHEME_TRACE-} ]] || __tt_mark frame.tick spin
 }
 
 __tt_pv_barfit() {
@@ -2000,6 +2001,7 @@ __tt_pv_behind_tick() {
     print -rn -- $'\e[?2026h'
     __tt_pv_bg_orbit $tick
     printf '\e[%d;%dH\e[?2026l' $pvsr $pvsc
+    [[ -z ${TTHEME_TRACE-} ]] || __tt_mark frame.tick orbit
   fi
   return 1
 }
@@ -3547,7 +3549,7 @@ __tt_preview() {
         fi
         while :; do
           [[ $key == (mouse|nop) ]] || __tt_pv_unhover
-          [[ -z ${TTHEME_TRACE-} || $key == nop ]] || __tt_mark input.key $key
+          [[ -z ${TTHEME_TRACE-} || $key == nop || $key == mouse && $mact == move ]] || __tt_mark input.key ${key/#%mouse/mouse.$mact}
           __tt_pv_handle || break 3
           __tt_pv_read drain || break
         done

@@ -5,8 +5,12 @@ typeset -gi TTHEME_PALETTES_IN=0
 __tt_mark() {
   emulate -L zsh
   (( $+EPOCHREALTIME )) || zmodload -F zsh/datetime p:EPOCHREALTIME
-  local t=$'\t' n=$'\n' r=$'\r'
-  print -r -- "$EPOCHREALTIME$t$$${t}zsh$t$1$t${${2-}//[$t$n$r]/ }" >> $TTHEME_TRACE
+  (( $+sysparams )) || zmodload -F zsh/system p:sysparams
+  [[ $TTHEME_TRACE == /* ]] || TTHEME_TRACE=${TTHEME_TRACE:a}
+  local t=$'\t' n=$'\n' r=$'\r' at=zsh
+  local -i deep=${#${(M)zsh_eval_context:#cmdsubst}}
+  (( deep )) && at+=/$deep
+  print -r -- "$EPOCHREALTIME$t$sysparams[pid]$t$sysparams[ppid]$t$at$t$1$t${${2-}//[$t$n$r]/ }" >> $TTHEME_TRACE
   return 0
 } 2>/dev/null
 
@@ -194,7 +198,9 @@ __tt_off_here() {
 
 if [[ -r $TTHEME_HOME/start.zsh ]]; then
   __tt_palettes_load || {
+    [[ -z ${TTHEME_TRACE-} ]] || __tt_mark cli.start sync
     node $TTHEME_HOME/current/ttheme.js sync </dev/null >/dev/null 2>&1
+    [[ -z ${TTHEME_TRACE-} ]] || __tt_mark cli.end sync
     __tt_palettes_load any
   }
 else
@@ -919,6 +925,7 @@ __tt_unmux() {
 
 __tt_blur() {
   emulate -L zsh ${=${options[xtrace]:#off}:+-o xtrace}
+  [[ -z ${TTHEME_TRACE-} ]] || __tt_mark focus.out
   TTHEME_FRONT=0
   __tt_blurred
 }

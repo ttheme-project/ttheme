@@ -1,405 +1,36 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { parseArgs } from 'node:util'
+import {
+  type Analysis,
+  analyze,
+  blankOf,
+  GRACE,
+  type Interaction,
+  type Mark,
+  type Proc,
+  parseMarks,
+  parseShots,
+  QUIET,
+  quantile,
+  type Segment,
+  type Step,
+} from './analyze.ts'
 
-const OUTPUTS = new Set(['frame.write', 'osc.write', 'reload'])
-
-const BOUNDS = new Set([
-  'input.bytes',
-  'input.key',
-  'focus.in',
-  'focus.done',
-  'verb.start',
-  'verb.end',
-  'cli.start',
-  'cli.end',
-  'proc.start',
-  'proc.main',
-  'proc.exit',
-  'shell.start',
-  'shell.ready',
-  'prompt',
-])
-
-const PROCESS = /^(cli|proc|shell)\./
-const GRACE = 300
-const QUIET = 250
-const BYTES_WAIT = 250
-const STEADY_SHARE = 0.05
-const SAME_CELL = 6
-const SAME_CELLS = 2
-const BLANK_SPREAD = 12
-const BLANK_SHARE = 0.5
-
-interface Mark {
-  at: number
-  pid: number
-  proc: string
-  name: string
-  detail: string
+function procName(mark: Mark, procs: Map<number, Proc>): string {
+  return mark.pid ? (procs.get(mark.pid)?.name ?? mark.proc) : mark.proc
 }
 
-interface Shot {
-  at: number
-  kind: string
-  cells: Uint8Array | undefined
+function stepName(step: Step, procs: Map<number, Proc>): string {
+  const suffix = step.role === 'last' ? ' (last)' : step.role === 'busy' ? ' (busy)' : ''
+
+  return `${procName(step.mark, procs)} ${step.mark.name}${suffix}`
 }
 
-interface Segment {
-  label: string
-  stage: 'A' | 'B' | 'C' | 'D'
-  from: number
-  to: number
+function labelOf(segment: Segment, procs: Map<number, Proc>): string {
+  return `${stepName(segment.from, procs)} → ${stepName(segment.to, procs)}`
 }
 
-interface Span {
-  name: string
-  pid: number
-  tid: number
-  from: number
-  to: number
-}
-
-interface Interaction {
-  anchor: Mark
-  run: number
-  ordinal: number
-  end: number
-  segments: Segment[]
-  first: number | undefined
-  done: number | undefined
-  written: number | undefined
-  shown: boolean
-  dropped: boolean
-  between: number
-  later: number
-  blank: number
-  spans: Span[]
-}
-
-function readMarks(file: string): Mark[] {
-  const marks: Mark[] = []
-
-  for (const line of readFileSync(file, 'utf8').split('\n')) {
-    const [ts, pid, proc, name, ...rest] = line.split('\t')
-
-    if (!ts || !name || Number.isNaN(Number(ts))) {
-      continue
-    }
-
-    marks.push({ at: Number(ts) * 1000, pid: Number(pid), proc: proc ?? '', name, detail: rest.join(' ') })
-  }
-
-  return marks.sort((a, b) => a.at - b.at)
-}
-
-function readShots(file: string | undefined): Shot[] {
-  if (!file || !existsSync(file)) {
-    return []
-  }
-
-  const shots: Shot[] = []
-
-  for (const line of readFileSync(file, 'utf8').split('\n')) {
-    const [ts, kind, , cells] = line.split('\t')
-
-    if (!ts || !kind) {
-      continue
-    }
-
-    shots.push({ at: Number(ts) * 1000, kind, cells: cells ? Uint8Array.from(Buffer.from(cells, 'hex')) : undefined })
-  }
-
-  return shots.sort((a, b) => a.at - b.at)
-}
-
-function differs(a: Uint8Array | undefined, b: Uint8Array | undefined): boolean {
-  if (!a || !b || a.length !== b.length) {
-    return true
-  }
-
-  let moved = 0
-
-  for (let i = 0; i < a.length; i++) {
-    if (Math.abs((a[i] ?? 0) - (b[i] ?? 0)) > SAME_CELL && ++moved > SAME_CELLS) {
-      return true
-    }
-  }
-
-  return false
-}
-
-function spreadOf(cells: Uint8Array | undefined): number {
-  if (!cells || cells.length === 0) {
-    return Number.NaN
-  }
-
-  let low = 255
-  let high = 0
-
-  for (const cell of cells) {
-    low = Math.min(low, cell)
-    high = Math.max(high, cell)
-  }
-
-  return high - low
-}
-
-function blankOf(cells: Uint8Array | undefined, around: readonly (Uint8Array | undefined)[] = []): boolean {
-  const spread = spreadOf(cells)
-
-  const others = around.flatMap((each) => {
-    const value = spreadOf(each)
-
-    return Number.isNaN(value) ? [] : [value]
-  })
-
-  return spread <= Math.max(BLANK_SPREAD, others.length > 0 ? Math.min(...others) * BLANK_SHARE : 0)
-}
-
-function quantile(values: readonly number[], q: number): number {
-  const sorted = [...values].sort((a, b) => a - b)
-
-  if (sorted.length === 0) {
-    return Number.NaN
-  }
-
-  const at = (sorted.length - 1) * q
-  const low = Math.floor(at)
-  const high = Math.ceil(at)
-
-  return (sorted[low] ?? 0) + ((sorted[high] ?? 0) - (sorted[low] ?? 0)) * (at - low)
-}
-
-function namesOf(marks: readonly Mark[]): Map<number, string> {
-  const names = new Map<number, string>()
-
-  for (const each of marks) {
-    if (names.has(each.pid)) {
-      continue
-    }
-
-    if (each.proc === 'node') {
-      const verb = marks.find((m) => m.pid === each.pid && m.name === 'proc.start')?.detail.split(' ')[0]
-      names.set(each.pid, `node ${verb || 'ttheme'}`)
-    } else {
-      names.set(each.pid, each.proc)
-    }
-  }
-
-  return names
-}
-
-function anchorsOf(marks: readonly Mark[]): Mark[] {
-  const sent = marks.some((each) => each.name === 'input.sent')
-
-  const keys = marks.filter(
-    (each) =>
-      each.name === 'input.sent' ||
-      each.name === 'focus.in' ||
-      (each.name === 'input.key' && (!sent || each.detail === 'paste' || each.detail.startsWith('mouse.'))),
-  )
-
-  return keys.map((each) => {
-    if (each.name !== 'input.key') {
-      return each
-    }
-
-    const bytes = marks.findLast(
-      (other) =>
-        other.name === 'input.bytes' &&
-        other.pid === each.pid &&
-        other.at <= each.at &&
-        each.at - other.at < BYTES_WAIT,
-    )
-
-    return bytes ? { ...bytes, detail: each.detail } : each
-  })
-}
-
-function spansOf(inside: readonly Mark[]): Span[] {
-  const spans: Span[] = []
-  const open = new Map<string, Mark>()
-
-  for (const each of inside) {
-    if (each.name === 'net.start') {
-      open.set(`net ${each.pid} ${each.detail}`, each)
-    } else if (each.name === 'net.head' || each.name === 'net.fail' || each.name === 'net.body') {
-      const url = each.name === 'net.head' ? each.detail.slice(each.detail.indexOf(' ') + 1) : each.detail
-      const key = `net ${each.pid} ${url}`
-      const began = open.get(key)
-
-      if (began) {
-        spans.push({ name: `net ${url}`, pid: each.pid, tid: 2, from: began.at, to: each.at })
-
-        if (each.name !== 'net.head') {
-          open.delete(key)
-        }
-      }
-    } else if (each.name === 'render.start') {
-      open.set(`render ${each.pid} ${each.detail.split(' ')[0]}`, each)
-    } else if (each.name === 'render.end') {
-      const key = `render ${each.pid} ${each.detail}`
-      const began = open.get(key)
-
-      if (began) {
-        spans.push({ name: `render ${began.detail}`, pid: each.pid, tid: 3, from: began.at, to: each.at })
-        open.delete(key)
-      }
-    }
-  }
-
-  return spans
-}
-
-function settledOf(written: readonly Mark[], inside: readonly Mark[]): Mark[] {
-  const kept = written.slice(0, 1)
-
-  for (const [k, next] of written.entries()) {
-    const prev = written[k - 1]
-
-    if (!prev) {
-      continue
-    }
-
-    const busy = inside.some(
-      (each) => each.at > prev.at && each.at < next.at && !OUTPUTS.has(each.name) && !each.name.startsWith('input.'),
-    )
-
-    if (next.at - prev.at > QUIET && !busy) {
-      break
-    }
-
-    kept.push(next)
-  }
-
-  return kept
-}
-
-function stageOf(from: Mark, to: Mark): Segment['stage'] {
-  if (from.name === 'input.sent') {
-    return 'A'
-  }
-
-  if (to.proc === 'screen') {
-    return 'D'
-  }
-
-  return PROCESS.test(from.name) || PROCESS.test(to.name) ? 'C' : 'B'
-}
-
-interface Cadence {
-  usual: number
-  limit: number
-  steady: boolean
-}
-
-function cadenceOf(shots: readonly Shot[]): Cadence {
-  const beats = shots.filter((shot) => shot.kind === 'frame' || shot.kind === 'same' || shot.kind === 'idle')
-  const gaps = beats.slice(1).map((shot, i) => shot.at - (beats[i]?.at ?? shot.at))
-  const usual = gaps.length > 0 ? quantile(gaps, 0.5) : Number.NaN
-  const limit = Math.max(25, usual * 2.5)
-  const late = gaps.filter((gap) => gap > usual * 1.5).length
-
-  return { usual, limit, steady: gaps.length > 0 && late / gaps.length < STEADY_SHARE }
-}
-
-function interactionsOf(marks: readonly Mark[], shots: readonly Shot[], names: Map<number, string>): Interaction[] {
-  const anchors = anchorsOf(marks)
-  const starts = marks.filter((each) => each.name === 'run.start')
-  const frames = shots.filter((shot) => shot.kind === 'frame')
-  const beats = shots.filter((shot) => shot.kind === 'frame' || shot.kind === 'same' || shot.kind === 'idle')
-  const { limit: gapLimit, steady } = cadenceOf(shots)
-  const ordinals = new Map<number, number>()
-  const found: Interaction[] = []
-
-  for (const [i, anchor] of anchors.entries()) {
-    const run = starts.filter((start) => start.at <= anchor.at).length
-    const ordinal = (ordinals.get(run) ?? 0) + 1
-    ordinals.set(run, ordinal)
-    const nextRun = starts.find((start) => start.at > anchor.at)?.at ?? Number.POSITIVE_INFINITY
-
-    const end = Math.min(
-      anchors[i + 1]?.at ?? Number.POSITIVE_INFINITY,
-      nextRun,
-      (marks.at(-1)?.at ?? anchor.at) + GRACE,
-    )
-
-    const inside = marks.filter((each) => each.at > anchor.at && each.at < end && each !== anchor)
-    const written = inside.filter((each) => OUTPUTS.has(each.name))
-    const firstOut = written[0]
-    const kept = settledOf(written, inside)
-    const doneOut = kept.at(-1)
-    const limit = doneOut?.at ?? end
-    const picks = new Map<string, Mark>()
-
-    for (const each of inside) {
-      if (each.at <= limit && BOUNDS.has(each.name) && !picks.has(`${each.pid} ${each.name}`)) {
-        picks.set(`${each.pid} ${each.name}`, each)
-      }
-    }
-
-    const chain: Mark[] = [anchor, ...picks.values()]
-
-    if (firstOut && firstOut !== doneOut) {
-      chain.push(firstOut)
-    }
-
-    if (doneOut) {
-      chain.push({ ...doneOut, name: `${doneOut.name} (last)` })
-    }
-
-    const shownFirst = firstOut && frames.find((shot) => shot.at >= firstOut.at && shot.at <= end + GRACE)
-    const shownDone = doneOut && frames.find((shot) => shot.at >= doneOut.at && shot.at <= end + GRACE)
-
-    if (shownDone) {
-      chain.push({ at: shownDone.at, pid: 0, proc: 'screen', name: 'settled', detail: '' })
-    }
-
-    chain.sort((a, b) => a.at - b.at)
-    const segments: Segment[] = []
-
-    for (let k = 1; k < chain.length; k++) {
-      const from = chain[k - 1]
-      const to = chain[k]
-
-      if (from && to) {
-        segments.push({
-          label: `${from.pid ? names.get(from.pid) : from.proc} ${from.name} → ${to.pid ? names.get(to.pid) : to.proc} ${to.name}`,
-          stage: stageOf(from, to),
-          from: from.at,
-          to: to.at,
-        })
-      }
-    }
-
-    const lead = shownDone ? beats.findLast((shot) => shot.at < shownDone.at) : undefined
-    const dropped = steady && shownDone !== undefined && lead !== undefined && shownDone.at - lead.at > gapLimit
-    const before = frames.findLast((shot) => shot.at < anchor.at)
-    const middle = shownDone ? frames.filter((shot) => shot.at > anchor.at && shot.at < shownDone.at) : []
-    const odd = middle.filter((shot) => differs(shot.cells, before?.cells) && differs(shot.cells, shownDone?.cells))
-
-    found.push({
-      anchor,
-      run,
-      ordinal,
-      end,
-      segments,
-      first: shownFirst ? shownFirst.at - anchor.at : undefined,
-      done: shownDone ? shownDone.at - anchor.at : undefined,
-      written: doneOut ? doneOut.at - anchor.at : undefined,
-      shown: shots.length > 0,
-      dropped,
-      between: odd.length,
-      later: written.length - kept.length,
-      blank: odd.filter((shot) => blankOf(shot.cells, [before?.cells, shownDone?.cells])).length,
-      spans: spansOf(inside),
-    })
-  }
-
-  return found
-}
-
-function labelOf(interaction: Interaction): string {
+function whatOf(interaction: Interaction, procs: Map<number, Proc>): string {
   const { anchor } = interaction
 
   const what =
@@ -407,27 +38,106 @@ function labelOf(interaction: Interaction): string {
       ? anchor.detail
       : `${anchor.name} ${anchor.detail}`.trim()
 
-  return interaction.run > 0 ? `#${interaction.ordinal} ${what}` : what
+  if (interaction.run > 0) {
+    return `#${interaction.ordinal} ${what}`
+  }
+
+  const reader = interaction.reader === undefined ? undefined : procs.get(interaction.reader)?.name
+
+  return reader ? `${what} in ${reader}` : what
 }
 
 function ms(value: number): string {
   return Number.isNaN(value) ? '-' : value.toFixed(1)
 }
 
-function table(group: readonly Interaction[]): string[] {
-  const usable = group.filter((each) => !each.dropped)
+function summary(label: string, values: readonly number[], width: number): string {
+  return `  = ${label.padEnd(width)}${String(values.length).padStart(4)}${ms(quantile(values, 0.5)).padStart(9)}${ms(quantile(values, 0.95)).padStart(9)}${ms(Math.max(...values)).padStart(9)}`
+}
+
+function count(group: readonly Interaction[], test: (each: Interaction) => boolean): number {
+  return group.filter(test).length
+}
+
+function runs(n: number): string {
+  return n === 1 ? '1 run' : `${n} runs`
+}
+
+function notes(group: readonly Interaction[], procs: Map<number, Proc>, captured: boolean): string[] {
+  const lines: string[] = []
+  const waits = group.flatMap((each) => each.spans)
+
+  if (waits.length > 0) {
+    const net = waits.flatMap((span) => (span.tid === 2 ? [span.to - span.from] : []))
+    const render = waits.flatMap((span) => (span.tid === 3 ? [span.to - span.from] : []))
+    lines.push(
+      `  meanwhile: ${net.length} network requests (longest ${ms(Math.max(0, ...net))} ms), ${render.length} renders (longest ${ms(Math.max(0, ...render))} ms)`,
+    )
+  }
+
+  const beside = [...new Set(group.flatMap((each) => each.beside.map((pid) => procs.get(pid)?.name ?? String(pid))))]
+
+  if (beside.length > 0) {
+    lines.push(`  also running, left out of the stages: ${beside.join(', ')}`)
+  }
+
+  if (captured) {
+    const between = group.reduce((sum, each) => sum + each.between, 0)
+    const blank = group.reduce((sum, each) => sum + each.blank, 0)
+    lines.push(`  frames in between: ${between} (blank ${blank}) over ${runs(group.length)}`)
+  }
+
+  const gapped = group.filter((each) => each.floor !== undefined)
+
+  if (gapped.length > 0) {
+    const ranges = gapped.map(
+      (each) => `between +${ms(each.floor ?? Number.NaN)} and +${ms(each.done ?? Number.NaN)} ms`,
+    )
+
+    lines.push(
+      `  ${runs(gapped.length)} settled after a gap in the capture, timed at the frame that showed the change; it landed ${ranges.join(', ')}`,
+    )
+  }
+
+  const unseen = count(group, (each) => each.unseen)
+
+  if (unseen > 0) {
+    lines.push(`  ${runs(unseen)}: the last write changed nothing on screen before the next write, so no settle`)
+  }
+
+  const crossed = count(group, (each) => each.crossed)
+
+  if (crossed > 0) {
+    lines.push(
+      `  ${runs(crossed)}: a spinner or another process wrote before the frame that settled, which may show that write`,
+    )
+  }
+
+  const queued = count(group, (each) => each.queued)
+
+  if (queued > 0) {
+    lines.push(`  ${runs(queued)}: ttheme was still busy when the key's bytes were ready, counted in B (busy)`)
+  }
+
+  const later = count(group, (each) => each.later > 0)
+
+  if (later > 0) {
+    lines.push(`  ${runs(later)} wrote again after ${QUIET} ms of nothing, left out of settled`)
+  }
+
+  return lines
+}
+
+function table(group: readonly Interaction[], procs: Map<number, Proc>, captured: boolean): string[] {
   const rows = new Map<string, { stage: string; values: number[]; offsets: number[] }>()
 
   for (const each of group) {
     for (const segment of each.segments) {
-      if (segment.stage === 'D' && each.dropped) {
-        continue
-      }
-
-      const row = rows.get(segment.label) ?? { stage: segment.stage, values: [], offsets: [] }
-      row.values.push(segment.to - segment.from)
-      row.offsets.push(segment.from - each.anchor.at)
-      rows.set(segment.label, row)
+      const label = labelOf(segment, procs)
+      const row = rows.get(label) ?? { stage: segment.stage, values: [], offsets: [] }
+      row.values.push(segment.to.mark.at - segment.from.mark.at)
+      row.offsets.push(segment.from.mark.at - each.anchor.at)
+      rows.set(label, row)
     }
   }
 
@@ -452,50 +162,30 @@ function table(group: readonly Interaction[]): string[] {
     )
   }
 
-  const totals: [string, number[]][] = group[0]?.shown
+  const totals: [string, number[]][] = captured
     ? [
-        ['to the first change on screen', usable.flatMap((each) => (each.first === undefined ? [] : [each.first]))],
-        ['to the screen settled', usable.flatMap((each) => (each.done === undefined ? [] : [each.done]))],
+        ['to the first change on screen', group.flatMap((each) => (each.first === undefined ? [] : [each.first]))],
+        ['to the screen settled', group.flatMap((each) => (each.done === undefined ? [] : [each.done]))],
       ]
-    : [['to the last write (no capture)', group.flatMap((each) => (each.written === undefined ? [] : [each.written]))]]
+    : [
+        ['to the last write (no capture)', group.flatMap((each) => (each.written === undefined ? [] : [each.written]))],
+        [
+          'to the terminal (no capture)',
+          group.flatMap((each) => (each.delivered === undefined ? [] : [each.delivered])),
+        ],
+      ]
 
   for (const [label, values] of totals) {
     if (values.length > 0) {
-      lines.push(
-        `  = ${label.padEnd(width)}${String(values.length).padStart(4)}${ms(quantile(values, 0.5)).padStart(9)}${ms(quantile(values, 0.95)).padStart(9)}${ms(Math.max(...values)).padStart(9)}`,
-      )
+      lines.push(summary(label, values, width))
     }
   }
 
-  const waits = group.flatMap((each) => each.spans)
-
-  if (waits.length > 0) {
-    const net = waits.flatMap((span) => (span.tid === 2 ? [span.to - span.from] : []))
-    const render = waits.flatMap((span) => (span.tid === 3 ? [span.to - span.from] : []))
-    lines.push(
-      `  meanwhile: ${net.length} network requests (longest ${ms(Math.max(0, ...net))} ms), ${render.length} renders (longest ${ms(Math.max(0, ...render))} ms)`,
-    )
-  }
-
-  if (group[0]?.shown) {
-    const between = group.reduce((sum, each) => sum + each.between, 0)
-    const blank = group.reduce((sum, each) => sum + each.blank, 0)
-    const dropped = group.length - usable.length
-    const later = group.filter((each) => each.later > 0).length
-    lines.push(
-      `  frames in between: ${between} (blank ${blank}) over ${usable.length} runs${dropped ? `, ${dropped} left out: the capture had a gap just before the screen settled` : ''}${later ? `; ${later} runs wrote again after ${QUIET} ms of nothing, left out of settled` : ''}`,
-    )
-  }
-
-  return lines
+  return [...lines, ...notes(group, procs, captured)]
 }
 
-function perfetto(
-  marks: readonly Mark[],
-  shots: readonly Shot[],
-  names: Map<number, string>,
-  picked: readonly Interaction[],
-) {
+function perfetto(analysis: Analysis, picked: readonly Interaction[]) {
+  const { marks, shots, procs } = analysis
   const from = Math.min(...picked.map((each) => each.anchor.at)) - 50
   const to = Math.max(...picked.map((each) => each.end)) + GRACE
   const us = (at: number) => Math.round((at - from) * 1000)
@@ -505,8 +195,13 @@ function perfetto(
     { ph: 'M', name: 'process_name', pid: 2, args: { name: 'screen' } },
   ]
 
-  for (const [pid, name] of names) {
-    events.push({ ph: 'M', name: 'process_name', pid: pid + 10, args: { name: `${name} ${pid}` } })
+  for (const each of procs.values()) {
+    events.push({
+      ph: 'M',
+      name: 'process_name',
+      pid: each.pid + 10,
+      args: { name: `${each.name} ${each.pid} (parent ${each.ppid})` },
+    })
   }
 
   for (const each of marks) {
@@ -539,7 +234,7 @@ function perfetto(
   for (const each of picked) {
     events.push({
       ph: 'X',
-      name: labelOf(each),
+      name: whatOf(each, procs),
       pid: 1,
       tid: 1,
       ts: us(each.anchor.at),
@@ -549,11 +244,11 @@ function perfetto(
     for (const segment of each.segments) {
       events.push({
         ph: 'X',
-        name: `${segment.stage} ${segment.label}`,
+        name: `${segment.stage} ${labelOf(segment, procs)}`,
         pid: 1,
         tid: 2,
-        ts: us(segment.from),
-        dur: Math.max(1, us(segment.to) - us(segment.from)),
+        ts: us(segment.from.mark.at),
+        dur: Math.max(1, us(segment.to.mark.at) - us(segment.from.mark.at)),
       })
     }
 
@@ -572,6 +267,22 @@ function perfetto(
   return { traceEvents: events, displayTimeUnit: 'ms' }
 }
 
+function warn(analysis: Analysis): void {
+  const sent = analysis.interactions.filter((each) => each.anchor.name === 'input.sent')
+  const none = count(sent, (each) => each.arrival === 'none')
+  const pty = count(sent, (each) => each.arrival === 'pty')
+
+  if (none > 0) {
+    process.stderr.write(
+      `trace: ${none} of ${sent.length} keys sent never reached ttheme's pty; the terminal may drop key events sent to it\n`,
+    )
+  }
+
+  if (pty > 0) {
+    process.stderr.write(`trace: ${pty} of ${sent.length} keys reached ttheme's pty and nothing read them\n`)
+  }
+}
+
 function main(): number {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
@@ -587,10 +298,10 @@ function main(): number {
   }
 
   const framesFile = values.frames ?? (existsSync(`${file}.frames`) ? `${file}.frames` : undefined)
-  const marks = readMarks(file)
-  const shots = readShots(framesFile)
-  const names = namesOf(marks)
-  const found = interactionsOf(marks, shots, names)
+  const marks = parseMarks(readFileSync(file, 'utf8'))
+  const shots = framesFile && existsSync(framesFile) ? parseShots(readFileSync(framesFile, 'utf8')) : []
+  const analysis = analyze(marks, shots)
+  const found = analysis.interactions
 
   if (found.length === 0) {
     process.stderr.write(`trace: ${file} holds ${marks.length} marks and no key or focus to start from\n`)
@@ -598,56 +309,51 @@ function main(): number {
     return 1
   }
 
+  warn(analysis)
   const groups = new Map<string, Interaction[]>()
 
   for (const each of found) {
-    const label = labelOf(each)
-    groups.set(label, [...(groups.get(label) ?? []), each])
-  }
-
-  const lost = found.filter(
-    (each) =>
-      each.anchor.name === 'input.sent' &&
-      !marks.some((other) => other.name === 'input.bytes' && other.at > each.anchor.at && other.at < each.end),
-  ).length
-
-  if (lost > 0) {
-    process.stderr.write(
-      `trace: ${lost} of ${found.length} keys sent never arrived as bytes; the terminal may drop key events sent to it\n`,
-    )
+    const label = whatOf(each, analysis.procs)
+    const group = groups.get(label) ?? []
+    group.push(each)
+    groups.set(label, group)
   }
 
   const runs = new Set(found.map((each) => each.run)).size
-  const captured = shots.filter((shot) => shot.kind === 'frame').length
-  process.stdout.write(
-    `${file}\n  ${marks.length} marks, ${found.length} interactions${runs > 1 ? ` over ${runs} runs` : ''}, ${framesFile ? `${captured} changed frames captured` : 'no screen capture'}\n`,
-  )
-  const cadence = cadenceOf(shots)
+  const captured = shots.some((shot) => shot.kind === 'frame')
+  const frames = shots.filter((shot) => shot.kind === 'frame').length
 
-  if (framesFile && !cadence.steady) {
+  process.stdout.write(
+    `${file}\n  ${marks.length} marks, ${found.length} interactions${runs > 1 ? ` over ${runs} runs` : ''}, ${framesFile ? `${frames} changed frames captured` : 'no screen capture'}\n`,
+  )
+
+  if (framesFile && !analysis.cadence.steady) {
     process.stdout.write(
-      `  the terminal sent frames only when they changed (usually ${ms(cadence.usual)} ms apart, often more), so a skipped frame cannot be told from a still screen\n`,
+      `  the terminal sent frames only when they changed (usually ${ms(analysis.cadence.usual)} ms apart, often more), so a gap in the capture cannot be told from a still screen\n`,
     )
   }
 
-  process.stdout.write('  A input, B ttheme, C process boundary, D terminal and screen; times in ms from the key\n')
+  process.stdout.write(
+    '  A input, B ttheme, C process start and end, D terminal and screen, H the sandbox relay; times in ms from the key\n',
+  )
 
   for (const [label, group] of groups) {
-    process.stdout.write(`\n${label}\n${table(group).join('\n')}\n`)
+    process.stdout.write(`\n${label}\n${table(group, analysis.procs, captured).join('\n')}\n`)
   }
 
-  const ranked = found
-    .filter((each) => !each.dropped)
-    .sort((a, b) => (b.done ?? b.written ?? 0) - (a.done ?? a.written ?? 0))
+  const ranked = [...found].sort(
+    (a, b) => (b.done ?? b.delivered ?? b.written ?? 0) - (a.done ?? a.delivered ?? a.written ?? 0),
+  )
 
-  const slowest = ranked[0] ?? found[0]
+  const slowest = ranked[0]
 
   if (slowest) {
     const picked = values.perfetto === 'all' ? found : [slowest]
     const out = file.replace(/\.tsv$/, '') + (values.perfetto === 'all' ? '.perfetto.json' : '.slowest.json')
-    writeFileSync(out, JSON.stringify(perfetto(marks, shots, names, picked)))
+    writeFileSync(out, JSON.stringify(perfetto(analysis, picked)))
+    const took = slowest.done ?? slowest.delivered ?? slowest.written ?? Number.NaN
     process.stdout.write(
-      `\nslowest: ${labelOf(slowest)}${slowest.run ? ` in run ${slowest.run}` : ''}, ${ms(slowest.done ?? slowest.written ?? Number.NaN)} ms\nperfetto: ${out} (open it at ui.perfetto.dev)\n`,
+      `\nslowest: ${whatOf(slowest, analysis.procs)}${slowest.run ? ` in run ${slowest.run}` : ''}, ${ms(took)} ms\nperfetto: ${out} (open it at ui.perfetto.dev)\n`,
     )
   }
 

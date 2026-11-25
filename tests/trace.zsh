@@ -16,7 +16,7 @@ usage() {
     'usage: mise run trace FILE [--frames FILE] [--perfetto all]' \
     '         read a trace: every interaction'"'"'s stages, the slowest stage, and a Perfetto file of the slowest' \
     '       mise run trace --watch FILE [--pid PID]' \
-    '         record the front window while a shell that exports TTHEME_TRACE=FILE is used; ctrl+c stops and reads it' \
+    '         record the window in front once a shell that exports TTHEME_TRACE=FILE marks something; ctrl+c stops and reads it' \
     '       mise run trace --sandbox [--runs N] [--out DIR] [--iterm | --kitty | --alacritty | --wezterm | --warp | --terminal-app]' \
     '                                [--size COLSxROWS] [--empty | --mine | palette…] -- COMMAND STEP…' \
     '         drive COMMAND through STEPs N times in a sandbox window, keys sent as real key events, and read the trace'
@@ -44,15 +44,30 @@ stop_helpers() {
   return 0
 }
 
+shell_marked() {
+  local file=$1
+  local -i from=$2
+  [[ -s $file ]] || return 1
+  local -a lines=("${(@f)$(<$file)}")
+  (( $#lines > from )) && [[ -n ${(M)lines[from + 1,-1]:#*$'\t'zsh(/<->|)$'\t'*} ]]
+}
+
 watch_window() {
   local -a pid
   zparseopts -D -E -F -- -pid:=pid || { usage; return 1 }
   (( $# == 1 )) || { usage; return 1 }
   local file=${1:A}
+  local -i seen=0
   tool wincap
   local -a target=(--front)
-  (( $#pid )) && target=(--pid $pid[-1])
-  print -u2 "trace: recording the front window into $file.frames; work in the shell that exports TTHEME_TRACE=$file, then press ctrl+c here"
+  if (( $#pid )); then
+    target=(--pid $pid[-1])
+  else
+    [[ -s $file ]] && seen=${#${(f)"$(<$file)"}}
+    print -u2 "trace: switch to the shell that exports TTHEME_TRACE=$file; the window in front when it first marks something is the one recorded"
+    until shell_marked $file $seen; do sleep 0.1; done
+  fi
+  print -u2 "trace: recording into $file.frames; press ctrl+c here to stop and read it"
   trap '' INT
   $BUILT[wincap] $target --out $file.frames --seconds 3600 || :
   trap - INT
@@ -154,7 +169,7 @@ sandbox_runs() {
   if (( captures )); then
     read_trace $dir/trace.tsv --frames $dir/frames.tsv
   else
-    print -u2 "trace: kitty draws nothing while its window is behind others, so this run records no screen and ends each key at its last write"
+    print -u2 "trace: kitty draws nothing while its window is behind others, so this run records no screen and ends each key where the relay hands its last write to kitty"
     read_trace $dir/trace.tsv
   fi
 }

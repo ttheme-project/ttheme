@@ -59,7 +59,7 @@ import {
   shellsOf,
   zdotdirOf,
 } from '../terminals/shells.ts'
-import { detectTerminal, settingsFor, TRAITS } from '../terminals/terminal.ts'
+import { detectTerminal, sendColors, settingsFor, TRAITS } from '../terminals/terminal.ts'
 import type { Pointed, Setup } from '../terminals/types.ts'
 import { warpChannelOf, warpSettings } from '../terminals/warp.ts'
 import { windowsAppData } from '../terminals/windows-terminal.ts'
@@ -562,7 +562,7 @@ function paintStartup(manifest: Manifest, installed: Installed, configHome: stri
     return false
   }
 
-  process.stdout.write(wear)
+  sendColors(wear)
 
   return true
 }

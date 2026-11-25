@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { Mode } from '../core/mode.ts'
 import { owned } from '../core/theme.ts'
+import { mark } from '../core/trace.ts'
 import { writeAtomic } from '../store/edits.ts'
 import { readInstalled, worn } from '../store/installed.ts'
 import { modeFor } from '../store/wiring.ts'
@@ -123,6 +124,7 @@ export function warpLive(env: Env, tty: boolean, configHome: string, home = home
       known = setTimeout(
         () => {
           wear(warpRef(dir, shown, look.name))
+          mark('reload', 'warp')
           sweep(shown)
         },
         Math.max(0, warpReady(join(dir, shown), settings, now) - now),

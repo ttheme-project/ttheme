@@ -31,29 +31,30 @@ _ = NSApplication.shared
 FileManager.default.createFile(atPath: outPath, contents: nil)
 let out = FileHandle(forWritingAtPath: outPath)!
 
-var timebase = mach_timebase_info_data_t()
-mach_timebase_info(&timebase)
+let nsPerTick: Double = {
+  var info = mach_timebase_info_data_t()
+  mach_timebase_info(&info)
+  return Double(info.numer) / Double(info.denom)
+}()
 
-func wallOffset() -> Double {
+@Sendable func wallOffset() -> Double {
   var best = Double.infinity
   var offset = 0.0
-  for _ in 0..<50 {
+  for _ in 0..<8 {
     let a = mach_absolute_time()
     let wall = Double(clock_gettime_nsec_np(CLOCK_REALTIME))
     let b = mach_absolute_time()
     let spread = Double(b - a)
     if spread < best {
       best = spread
-      offset = wall - Double(a + (b - a) / 2) * Double(timebase.numer) / Double(timebase.denom)
+      offset = wall - Double(a + (b - a) / 2) * nsPerTick
     }
   }
   return offset
 }
 
-let offset = wallOffset()
-
 func wall(_ ticks: UInt64) -> Double {
-  (Double(ticks) * Double(timebase.numer) / Double(timebase.denom) + offset) / 1e9
+  (Double(ticks) * nsPerTick + wallOffset()) / 1e9
 }
 
 let writer = DispatchQueue(label: "wincap.out")
@@ -168,7 +169,9 @@ Task {
     try await stream.startCapture()
     streamRef = stream
     emit(String(format: "%.6f\tstart\t%d\t%d\t%dx%d", wall(mach_absolute_time()), win.owningApplication?.processID ?? 0, win.windowID, Int(win.frame.width), Int(win.frame.height)))
-    FileHandle.standardError.write("wincap: recording window \(win.windowID) of pid \(win.owningApplication?.processID ?? 0)\n".data(using: .utf8)!)
+    let app = win.owningApplication?.applicationName ?? "an app"
+    let title = win.title.map { " (\($0))" } ?? ""
+    FileHandle.standardError.write("wincap: recording \(app)'s window \(win.windowID)\(title), pid \(win.owningApplication?.processID ?? 0)\n".data(using: .utf8)!)
   } catch {
     FileHandle.standardError.write("wincap: \(error)\n".data(using: .utf8)!)
     exit(1)

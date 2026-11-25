@@ -9,7 +9,7 @@ import { readBackdrop } from '../pictures/conf.ts'
 import { rewrite } from '../store/edits.ts'
 import { readInstalled } from '../store/installed.ts'
 import { colorless, paletteOsc, queryTerminalColors, restoreOsc, specColors } from './osc.ts'
-import { detectTerminal, type Live, SETTLE_MS } from './terminal.ts'
+import { detectTerminal, type Live, SETTLE_MS, sendColors } from './terminal.ts'
 import { canvasFor, heldIn, terminalPictures, terminalProfile, terminalScript, windowOf } from './terminal-app.ts'
 
 type Env = Record<string, string | undefined>
@@ -19,9 +19,7 @@ export function terminalLive(
   tty: boolean,
   configHome: string,
   home = homedir(),
-  write: (text: string) => void = (text) => {
-    process.stdout.write(text)
-  },
+  write: (text: string) => void = sendColors,
 ): Live | undefined {
   if (!tty || colorless(env) || env.TMUX || detectTerminal(env) !== 'terminal-app') {
     return undefined

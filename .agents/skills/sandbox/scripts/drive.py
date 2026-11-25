@@ -1,3 +1,4 @@
+import collections
 import fcntl
 import os
 import select
@@ -43,6 +44,7 @@ REPEAT = 0.03
 POSTED = set(KEYS) - {'focus-in', 'focus-out'}
 LINGER = float(os.environ.get('SB_LINGER') or 10)
 WAIT = 10.0
+PENDING = object()
 
 
 def real(step):
@@ -74,52 +76,123 @@ def keys(step):
     raise SystemExit(f'drive.py: unknown step {step!r}')
 
 
+class Trace:
+    def __init__(self):
+        self.fd = None
+        self.lines = []
+        self.ids = f'{os.getpid()}\t{os.getppid()}'
+        path = os.environ.get('TTHEME_TRACE')
+        if path:
+            try:
+                self.fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+            except OSError:
+                self.fd = None
+
+    def mark(self, name, detail=''):
+        if self.fd is not None:
+            detail = detail.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')
+            self.lines.append(f'{time.time():.6f}\t{self.ids}\tdrive\t{name}\t{detail}\n')
+
+    def flush(self):
+        if self.lines:
+            os.write(self.fd, ''.join(self.lines).encode())
+            self.lines = []
+
+
 class Screen:
     def __init__(self, size):
         rows, cols = struct.unpack('HHHH', size)[:2]
         helper = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'screen.mjs')
+        self.asked = None
+        self.reply = b''
+        self.behind = False
+        self.broken = False
+        self.held = collections.deque()
+        self.head = 0
         try:
             self.proc = subprocess.Popen(['node', helper, str(cols), str(rows)], stdin=subprocess.PIPE,
                                          stdout=subprocess.PIPE, bufsize=0)
         except OSError:
             self.proc = None
+            return
+        os.set_blocking(self.proc.stdin.fileno(), False)
 
     def send(self, kind, body=b''):
-        if self.proc is None:
+        if self.proc is None or self.broken:
             return False
-        try:
-            self.proc.stdin.write(kind + struct.pack('>I', len(body)) + body)
-            return True
-        except OSError:
-            self.proc = None
-            return False
+        self.held.append(kind + struct.pack('>I', len(body)) + body)
+        return True
+
+    def owed(self):
+        return [self.proc.stdin.fileno()] if self.held and self.proc is not None and not self.broken else []
+
+    def push(self):
+        fd = self.proc.stdin.fileno()
+        while self.held:
+            chunk = self.held[0]
+            try:
+                self.head += os.write(fd, memoryview(chunk)[self.head:])
+            except BlockingIOError:
+                return
+            except OSError:
+                self.broken = True
+                self.held.clear()
+                return
+            if self.head < len(chunk):
+                return
+            self.held.popleft()
+            self.head = 0
 
     def feed(self, data):
         self.send(b'd', data)
 
-    def text(self):
-        if not self.send(b't'):
+    def ask(self):
+        if self.asked is None:
+            if not self.send(b't'):
+                return False
+            self.asked = time.monotonic()
+            self.reply = b''
+        return True
+
+    def waiting(self):
+        return [self.proc.stdout.fileno()] if self.asked is not None and self.proc is not None else []
+
+    def heard(self, readable):
+        if self.asked is None:
+            return PENDING
+        if self.proc is None or self.broken:
+            self.asked = None
             return None
-        out = b''
         fd = self.proc.stdout.fileno()
-        while not out.endswith(b'\0'):
-            if fd not in select.select([fd], [], [], 2)[0]:
+        if fd not in readable:
+            if time.monotonic() - self.asked > WAIT:
+                self.asked = None
+                self.behind = True
                 return None
-            chunk = os.read(fd, 65536)
-            if not chunk:
-                self.proc = None
-                return None
-            out += chunk
-        return out[:-1].decode('utf-8', 'replace')
+            return PENDING
+        chunk = os.read(fd, 65536)
+        if not chunk:
+            self.proc = None
+            self.asked = None
+            return None
+        self.reply += chunk
+        if not self.reply.endswith(b'\0'):
+            return PENDING
+        self.asked = None
+        return self.reply[:-1].decode('utf-8', 'replace')
+
+    def why(self):
+        if self.behind:
+            return f'the screen text did not come within {WAIT:g} s'
+        return 'no screen text (node or @xterm/headless missing)'
 
     def close(self):
         if self.proc is None:
             return
-        try:
-            self.proc.stdin.close()
-            self.proc.wait(timeout=2)
-        except (OSError, subprocess.TimeoutExpired):
-            self.proc.kill()
+        self.broken = True
+        self.held.clear()
+        self.proc.kill()
+        self.proc.wait()
         self.proc = None
 
 
@@ -153,6 +226,7 @@ def main():
     size = fcntl.ioctl(term, termios.TIOCGWINSZ, b'\0' * 8)
     pid, master = spawn(command, size)
     screen = Screen(size)
+    trace = Trace()
     failed = False
     late = ''
     saved = termios.tcgetattr(term)
@@ -167,28 +241,37 @@ def main():
         at = time.monotonic() + GAP
         pending = []
         gap = GAP
+        opening = None
         shot = None
         done = None
         waiting = None
         poll = 0.0
         poster = None
+        readable = []
         while True:
             now = time.monotonic()
+            seen = screen.heard(readable)
             if shot:
-                if os.path.exists(f'{shot}.done') or os.path.exists(f'{shot}.skip'):
-                    seen = screen.text()
+                if seen is not PENDING:
                     if seen is not None:
                         with open(f'{shot}.screen', 'w') as out:
                             out.write(seen + '\n')
                     shot = None
                     at = now
-            elif waiting and now >= poll:
-                seen = screen.text()
-                if seen is not None and waiting[0] in seen:
+                elif screen.asked is None and (os.path.exists(f'{shot}.done') or os.path.exists(f'{shot}.skip')):
+                    if not screen.ask():
+                        shot = None
+                        at = now
+            elif waiting:
+                if seen is PENDING and screen.asked is None and now >= poll and not screen.ask():
+                    seen = None
+                if seen is PENDING:
+                    pass
+                elif seen is not None and waiting[0] in seen:
                     waiting = None
                     at = now
                 elif seen is None or now >= waiting[1]:
-                    why = f'not on the screen after {WAIT:g} s' if seen is not None else 'no screen text (node or @xterm/headless missing)'
+                    why = f'not on the screen after {WAIT:g} s' if seen is not None else screen.why()
                     if hand:
                         late = f'drive.py: wait:{waiting[0]} — {why}\n'
                     else:
@@ -199,9 +282,10 @@ def main():
                     steps, pending = [], []
                 else:
                     poll = now + 0.1
-            elif waiting:
-                pass
             elif pending and now >= at:
+                if opening is not None:
+                    trace.mark('input.sent', opening)
+                    opening = None
                 os.write(master, pending.pop(0).encode())
                 at = now + (gap if pending else GAP)
             elif steps and now >= at:
@@ -220,6 +304,7 @@ def main():
                         typing = real(step)
                         if typing is None:
                             pending, gap = keys(step)
+                            opening = step
                         else:
                             if poster is None:
                                 poster = open(os.environ['SB_KEYS'], 'w', buffering=1)
@@ -232,7 +317,10 @@ def main():
             if not hand and done is not None and now - done > LINGER:
                 os.kill(pid, signal.SIGHUP)
                 done = now
-            readable, _, _ = select.select([master, term], [], [], 1 if hand and done is not None else 0.02)
+            readable, writable, _ = select.select([master, term, *screen.waiting()], screen.owed(), [],
+                                                  1 if hand and done is not None else 0.02)
+            if writable:
+                screen.push()
             if master in readable:
                 try:
                     data = os.read(master, 65536)
@@ -240,6 +328,7 @@ def main():
                     data = b''
                 if data:
                     os.write(term, data)
+                    trace.mark('relay.out', str(len(data)))
                     screen.feed(data)
                 elif status is not None:
                     break
@@ -247,6 +336,8 @@ def main():
                 data = os.read(term, 4096)
                 if data:
                     os.write(master, data)
+                    trace.mark('relay.in', str(len(data)))
+            trace.flush()
             if status is None:
                 waited, code = os.waitpid(pid, os.WNOHANG)
                 if waited:
@@ -256,6 +347,7 @@ def main():
     finally:
         termios.tcsetattr(term, termios.TCSADRAIN, saved)
         screen.close()
+        trace.flush()
     sys.stderr.write(late)
     return 1 if failed else status or 0
 

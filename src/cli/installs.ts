@@ -25,6 +25,7 @@ import { installedPath, isLocal, marketplaceSources, shownSource } from '../stor
 import { wirings } from '../terminals/index.ts'
 import { liveOf } from '../terminals/live.ts'
 import { colorless } from '../terminals/osc.ts'
+import { sendColors } from '../terminals/terminal.ts'
 import type { Pointed } from '../terminals/types.ts'
 import { PalettePrompt, type PickerScope, promptFx } from '../tui/palette-prompt.ts'
 import { pending, say } from '../tui/pending.ts'
@@ -410,7 +411,7 @@ export async function pickPalettes(
     ...(go ? { go } : {}),
     color: !colorless(),
     fx: promptFx(process.env.TTHEME_FX),
-    onFocus: live ? (entry) => process.stdout.write(live.paint(entry)) : undefined,
+    onFocus: live ? (entry) => sendColors(live.paint(entry)) : undefined,
   })
 
   let done: Awaited<ReturnType<PalettePrompt['prompt']>>
@@ -419,7 +420,7 @@ export async function pickPalettes(
     done = await prompt.prompt()
   } finally {
     if (live) {
-      process.stdout.write(live.restore(saved))
+      sendColors(live.restore(saved))
     }
   }
 

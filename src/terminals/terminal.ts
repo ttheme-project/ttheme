@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import type { PaletteEntry } from '../core/manifest.ts'
 import { MODES, SETTINGS, type Setting } from '../core/mode.ts'
 import { owned } from '../core/theme.ts'
+import { mark } from '../core/trace.ts'
 import type { Wired } from '../core/wired.ts'
 import { writeAtomic } from '../store/edits.ts'
 import { type SchemeColors, schemeLines } from './emit/konsole.ts'
@@ -420,13 +421,15 @@ function konsoleLive(env: Env, look: string): Live {
   }
 }
 
-export function livePaint(
-  env: Env,
-  tty: boolean,
-  write: (text: string) => void = (text) => {
-    process.stdout.write(text)
-  },
-): Live | undefined {
+export function sendColors(text: string): void {
+  process.stdout.write(text)
+
+  if (text) {
+    mark('osc.write')
+  }
+}
+
+export function livePaint(env: Env, tty: boolean, write: (text: string) => void = sendColors): Live | undefined {
   const terminal = detectTerminal(env)
   const traits = TRAITS[terminal]
 

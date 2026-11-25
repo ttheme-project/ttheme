@@ -34,6 +34,7 @@ import { readTone, tunedIn } from '../store/tone.ts'
 import { modeFor } from '../store/wiring.ts'
 import { liveOf } from '../terminals/live.ts'
 import { colorless } from '../terminals/osc.ts'
+import { sendColors } from '../terminals/terminal.ts'
 import { BrowsePanel } from '../tui/browse/browse.ts'
 import type { BrowseIo, BrowseResult, Marketplace } from '../tui/browse/types.ts'
 import { HUB_CLOSED, HUB_UPDATE, hubOf } from '../tui/hub.ts'
@@ -343,7 +344,7 @@ export async function runBrowse(): Promise<number> {
     fx: promptFx(process.env.TTHEME_FX),
     help: process.env.TTHEME_HELP_BOX !== 'off',
     owns: tty && !hub,
-    ...(live ? { onFocus: (entry: PaletteEntry) => process.stdout.write(live.paint(entry)) } : {}),
+    ...(live ? { onFocus: (entry: PaletteEntry) => sendColors(live.paint(entry)) } : {}),
   })
 
   try {
@@ -352,7 +353,7 @@ export async function runBrowse(): Promise<number> {
     live?.stop?.()
 
     if (live && (!hub || panel.next() === undefined || panel.next() === HUB_UPDATE)) {
-      process.stdout.write(live.restore(saved))
+      sendColors(live.restore(saved))
     }
 
     lookups.abort()

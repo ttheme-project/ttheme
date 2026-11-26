@@ -18,7 +18,7 @@ runs:
         key: zsh-${{ runner.arch }}-${{ steps.version.outputs.zsh }}
     - shell: bash
       run: (set +e; sh "$GITHUB_ACTION_PATH/install.sh"; echo $? > "$RUNNER_TEMP/apt.rc") > "$RUNNER_TEMP/apt.log" 2>&1 &
-    - uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
+    - uses: jdx/mise-action@90f833d396d0cc3674b631d2d225e306476c303a # v5.2.10
     - shell: bash
       run: bun install --frozen-lockfile
     - name: zsh installed

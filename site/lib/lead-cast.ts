@@ -1,4 +1,4 @@
-import { type SimpleIcon, siX } from 'simple-icons'
+import { type SimpleIcon, siCreativecommons, siDeviantart, siX } from 'simple-icons'
 import type { Theme } from '@/lib/themes'
 
 export interface CastMember {
@@ -7,7 +7,10 @@ export interface CastMember {
   scale: number
 }
 
-export const CAST: readonly CastMember[] = [{ name: 'souryuu-asuka-langley', face: 930 / 756, scale: 1 }]
+export const CAST: readonly CastMember[] = [
+  { name: 'souryuu-asuka-langley', face: 930 / 756, scale: 1 },
+  { name: 'izumi-konata', face: 935 / 756, scale: 1 },
+]
 
 export interface StickerCredit {
   name: string
@@ -21,7 +24,7 @@ export interface StickerCredit {
   siteIcon: SimpleIcon
   post: string
   license: { brand: string; icon: SimpleIcon; terms: string; url: string } | null
-  after: { work: string; artist: string; handle: string; site: string; url: string } | null
+  after: { work: string; holder: string; url: string } | null
 }
 
 export const STICKER_CREDITS: readonly StickerCredit[] = [
@@ -38,6 +41,29 @@ export const STICKER_CREDITS: readonly StickerCredit[] = [
     post: 'https://x.com/kmym97457689/status/2099432694958719085',
     license: null,
     after: null,
+  },
+  {
+    name: 'izumi-konata',
+    who: 'Izumi Konata',
+    verb: 'Art by',
+    artist: null,
+    handle: 'lllP3lll',
+    profile: 'https://www.deviantart.com/lllp3lll',
+    japanese: false,
+    site: 'DeviantArt',
+    siteIcon: siDeviantart,
+    post: 'https://www.deviantart.com/lllp3lll/art/Konata-53704375',
+    license: {
+      brand: 'Creative Commons',
+      icon: siCreativecommons,
+      terms: 'CC BY-NC-SA 3.0',
+      url: 'https://creativecommons.org/licenses/by-nc-sa/3.0/',
+    },
+    after: {
+      work: "Comp H's Vol.3",
+      holder: '©美水かがみ/らっきー☆ぱらだいす',
+      url: 'https://yande.re/post/show/4380',
+    },
   },
 ]
 

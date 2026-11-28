@@ -95,15 +95,10 @@ export function LeadCredits() {
           {credit.after === null ? null : (
             <span data-lead-after>
               <span>After </span>
-              <span class="sr-only" safe>{`the ${credit.after.work} cover by `}</span>
-              <span lang="ja" translate="no" safe>
-                {credit.after.artist}
-              </span>{' '}
               <a href={credit.after.url} target="_blank" rel="noopener">
                 <b translate="no" safe>
-                  {credit.after.handle}
+                  {credit.after.work}
                 </b>
-                <span class="sr-only" safe>{` on ${credit.after.site}`}</span>
                 <span class="sr-only">, opens in a new tab</span>
               </a>
             </span>

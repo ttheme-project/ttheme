@@ -150,16 +150,13 @@ export function Credits({ facts }: { facts: Facts }) {
                   )}
                   {credit.after === null ? null : (
                     <>
-                      <span safe>{`, after the ${credit.after.work} cover by `}</span>
-                      <span lang="ja" translate="no" safe>
-                        {credit.after.artist}
-                      </span>{' '}
+                      <span>, after the </span>
                       <StickerLink href={credit.after.url}>
                         <span class="font-medium text-foreground" translate="no" safe>
-                          {credit.after.handle}
+                          {credit.after.work}
                         </span>
-                        <span class="sr-only" safe>{` on ${credit.after.site}`}</span>
                       </StickerLink>
+                      <span lang="ja" safe>{` cover, ${credit.after.holder}`}</span>
                     </>
                   )}
                 </li>

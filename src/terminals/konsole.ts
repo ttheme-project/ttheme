@@ -6,12 +6,13 @@ import type { Theme } from '../core/theme.ts'
 import { owned } from '../core/theme.ts'
 import { editUserFile, spareBackup } from '../store/edits.ts'
 import type { Host } from '../store/host.ts'
-import { dataHome, ownedIn, pointingOf, readText, running, tilde } from './common.ts'
+import { dataHome } from '../store/paths.ts'
+import { ownedIn, pointingOf, readText, running, tilde } from './common.ts'
 import { konsole as emitter, konsoleScheme } from './emit/konsole.ts'
 import type { At, Ctx, Defaults, Moment, Out, Wiring } from './types.ts'
 
 export function konsoleData(home: string): string {
-  return join(dataHome(home), 'konsole')
+  return join(dataHome(process.env, home), 'konsole')
 }
 
 export function konsolerc(configHome: string): string {
@@ -105,7 +106,11 @@ function profilePath(at: At, file: string): string | undefined {
   }
 
   const inside = named.includes('/') ? named : join('konsole', named)
-  const dirs = [dataHome(at.home), ...(process.env.XDG_DATA_DIRS || '/usr/local/share:/usr/share').split(':')]
+
+  const dirs = [
+    dataHome(process.env, at.home),
+    ...(process.env.XDG_DATA_DIRS || '/usr/local/share:/usr/share').split(':'),
+  ]
 
   return dirs.map((dir) => join(dir, inside)).find((path) => existsSync(path))
 }

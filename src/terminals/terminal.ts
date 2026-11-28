@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { PaletteEntry } from '../core/manifest.ts'
 import { MODES, SETTINGS, type Setting } from '../core/mode.ts'
@@ -8,6 +7,7 @@ import { owned } from '../core/theme.ts'
 import { mark } from '../core/trace.ts'
 import type { Wired } from '../core/wired.ts'
 import { writeAtomic } from '../store/edits.ts'
+import { configHome, dataHome } from '../store/paths.ts'
 import { type SchemeColors, schemeLines } from './emit/konsole.ts'
 import { colorless, paletteOsc, queryTerminalColors, restoreOsc, SLOT_CODES, schemeOsc, specColors } from './osc.ts'
 
@@ -204,8 +204,7 @@ function iniValue(text: string, group: string, key: string): string | undefined 
 }
 
 function konsoleLinks(env: Env): boolean {
-  const config = env.XDG_CONFIG_HOME || join(homedir(), '.config')
-  const rc = join(config, 'konsolerc')
+  const rc = join(configHome(env), 'konsolerc')
   let file = existsSync(rc) ? iniValue(readFileSync(rc, 'utf8'), 'Desktop Entry', 'DefaultProfile') : undefined
 
   for (let depth = 0; depth < 8 && file && file !== 'FALLBACK/'; depth++) {
@@ -353,10 +352,9 @@ const KONSOLE_VIEWS = 3
 const WALLPAPER = /^(Wallpaper|FillStyle|Anchor|WallpaperOpacity|WallpaperFlipType)=/
 
 function konsoleDirs(env: Env): string[] {
-  return [
-    env.XDG_DATA_HOME || join(homedir(), '.local', 'share'),
-    ...(env.XDG_DATA_DIRS || '/usr/local/share:/usr/share').split(':'),
-  ].map((dir) => join(dir, 'konsole'))
+  return [dataHome(env), ...(env.XDG_DATA_DIRS || '/usr/local/share:/usr/share').split(':')].map((dir) =>
+    join(dir, 'konsole'),
+  )
 }
 
 function wallpaperOf(dirs: readonly string[], look: string): string[] {

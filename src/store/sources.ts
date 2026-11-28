@@ -6,6 +6,7 @@ import { type Freshness, freshnessOf } from '../core/freshness.ts'
 import { escaped, inert } from '../core/text.ts'
 import { BUILTIN, type Identity, MARKETPLACE_FILE, nameProblem } from '../core/theme.ts'
 import { writeAtomic } from './edits.ts'
+import { stateRoot } from './paths.ts'
 
 export const MARKETPLACE_KEYS = ['$schema', 'name', 'description', 'owner']
 
@@ -132,7 +133,7 @@ export interface Tried {
 }
 
 function triesPath(): string {
-  return join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'ttheme', 'marketplaces.json')
+  return join(stateRoot(), 'marketplaces.json')
 }
 
 export function readTries(): Record<string, Tried> {

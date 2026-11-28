@@ -1,13 +1,13 @@
 import { execFile, spawn, spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { homedir, tmpdir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import pkg from '../../package.json' with { type: 'json' }
 import { freshnessOf } from '../core/freshness.ts'
 import { type Runner, runnerOf } from '../core/runner.ts'
 import { writeAtomic } from '../store/edits.ts'
 import { readInstalled } from '../store/installed.ts'
-import { configHome } from '../store/paths.ts'
+import { configHome, stateRoot } from '../store/paths.ts'
 import { currentVersion } from '../store/versions.ts'
 import { settingValue } from '../store/wiring.ts'
 import { colorless } from '../terminals/osc.ts'
@@ -84,7 +84,7 @@ export function autoWanted(
 }
 
 function seenPath(): string {
-  return join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'ttheme', 'release.json')
+  return join(stateRoot(), 'release.json')
 }
 
 function readSeen(): Seen {

@@ -39,7 +39,7 @@ import {
 import { compileZsh, editUserFile, writeAtomic } from '../store/edits.ts'
 import { type Host, systemHost } from '../store/host.ts'
 import { type Installed, readInstalled, startupPalette, worn, writeInstalled } from '../store/installed.ts'
-import { configHome as configDir } from '../store/paths.ts'
+import { configHome as configDir, stateRoot } from '../store/paths.ts'
 import { marketplacesOf } from '../store/sources.ts'
 import { placeVersion, pointCurrent, pruneVersions, versionsDir } from '../store/versions.ts'
 import { coloringFor, configFile, modeFor, modeSetting, upsertBlock, withSetting, zshrcBlock } from '../store/wiring.ts'
@@ -755,7 +755,7 @@ export async function runInit(flags: { yes?: boolean } = {}): Promise<void> {
   const runner = runnerOf(host.env.npm_config_user_agent)
   const wtHome = windowsAppData(host)
   const wtProfile = process.env.WT_PROFILE_ID
-  const stateDir = join(process.env.XDG_STATE_HOME || join(home, '.local', 'state'), 'ttheme')
+  const stateDir = stateRoot()
 
   const paths: InitPaths = {
     root: ROOT,

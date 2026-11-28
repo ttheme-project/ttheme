@@ -20,7 +20,8 @@ import type { Theme } from '../core/theme.ts'
 import { inOther, owned, stem } from '../core/theme.ts'
 import type { ProfileBackground } from '../pictures/conf.ts'
 import { backupOnce, editUserFile, listing, relink, spareBackup, symlinked, writeAtomic } from '../store/edits.ts'
-import { dataHome, readText, running, tilde } from './common.ts'
+import { dataHome } from '../store/paths.ts'
+import { readText, running, tilde } from './common.ts'
 import { warp as emitter, WARP_PART, type WarpPicture, warpPictureFile, warpTheme, warpThemeFile } from './emit/warp.ts'
 import type { At, Ctx, Out, Unwired, Wiring } from './types.ts'
 
@@ -65,7 +66,7 @@ function warpFolder(channel: WarpChannel): string {
 export function warpThemes(home: string, channel: WarpChannel = 'stable'): string {
   return process.platform === 'darwin'
     ? join(home, warpFolder(channel), 'themes')
-    : join(dataHome(home), warpFolder(channel), 'themes')
+    : join(dataHome(process.env, home), warpFolder(channel), 'themes')
 }
 
 export function warpSettings(home: string, configHome: string, channel: WarpChannel = 'stable'): string {

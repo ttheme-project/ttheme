@@ -9,6 +9,7 @@ import { frameAt } from '../pictures/backdrop.ts'
 import type { ProfileBackground } from '../pictures/conf.ts'
 import { rewrite, writeAtomic } from '../store/edits.ts'
 import type { Host } from '../store/host.ts'
+import { stateRoot } from '../store/paths.ts'
 import { pointingOf, readText } from './common.ts'
 import { terminalApp as emitter } from './emit/terminal-app.ts'
 import type { Ctx, Defaults, Moment, Wiring } from './types.ts'
@@ -30,7 +31,7 @@ export function terminalPictures(configHome: string): string {
 }
 
 function terminalWindow(env: Host['env'], home: string): string {
-  return join(env.XDG_STATE_HOME || join(home, '.local', 'state'), 'ttheme', 'terminal-app.window')
+  return join(stateRoot(env, home), 'terminal-app.window')
 }
 
 export const TERMINAL_JS = `ObjC.import('AppKit')

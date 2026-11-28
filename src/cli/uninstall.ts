@@ -9,7 +9,7 @@ import { agentHomes, placedSkills } from '../store/agent-skills.ts'
 import { relink, restoreUserFile, symlinked } from '../store/edits.ts'
 import { type Host, systemHost } from '../store/host.ts'
 import { type Installed, readInstalled } from '../store/installed.ts'
-import { cacheRoot, configHome as configDir } from '../store/paths.ts'
+import { cacheRoot, configHome as configDir, stateRoot } from '../store/paths.ts'
 import { localRoot } from '../store/sources.ts'
 import { removeBlock } from '../store/wiring.ts'
 import { ownedIn, stripped } from '../terminals/common.ts'
@@ -172,7 +172,7 @@ function uninstallPaths(): UninstallPaths {
     configHome: configDir(),
     zdotdir: zdotdirOf(systemHost(), home),
     cacheDir: cacheRoot(),
-    stateDir: join(process.env.XDG_STATE_HOME || join(home, '.local', 'state'), 'ttheme'),
+    stateDir: stateRoot(),
     claudeHome: agentHomes(home, process.env).claude,
   }
 }

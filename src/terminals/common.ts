@@ -25,10 +25,6 @@ export function stripped(file: string, remove: (content: string) => string): Unw
   return next === content ? [] : [{ file, content: next }]
 }
 
-export function dataHome(home: string): string {
-  return process.env.XDG_DATA_HOME || join(home, '.local', 'share')
-}
-
 export function running(pid: number): boolean {
   try {
     process.kill(pid, 0)

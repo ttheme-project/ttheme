@@ -1,12 +1,12 @@
 import { readFileSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { MODES, type Mode } from '../core/mode.ts'
 import { writeAtomic } from './edits.ts'
 import type { Host } from './host.ts'
+import { stateRoot } from './paths.ts'
 
 export function appearancePath(): string {
-  return join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'ttheme', 'appearance')
+  return join(stateRoot(), 'appearance')
 }
 
 export function readAppearance(): Mode | undefined {
